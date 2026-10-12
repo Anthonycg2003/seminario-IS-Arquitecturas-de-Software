@@ -5,9 +5,11 @@ on:
     branches: [main, master]
     paths:
       - 'latex/**'
+      - '.github/workflows/latex.yml'
   pull_request:
     paths:
       - 'latex/**'
+      - '.github/workflows/latex.yml'
 
 jobs:
   build:
@@ -18,7 +20,7 @@ jobs:
       - name: Compilar PDF
         uses: xu-cheng/latex-action@v3
         with:
-          root_file: latex/main.tex
+          root_file: main.tex
           working_directory: latex
           latexmk_use_xelatex: false
           args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
