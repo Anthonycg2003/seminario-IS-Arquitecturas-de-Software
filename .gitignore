@@ -1,0 +1,26 @@
+# LaTeX
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+latex/build/
+
+# PDF de entrega (generar con scripts/build-pdf.ps1 o CI)
+entrega/*.pdf
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
