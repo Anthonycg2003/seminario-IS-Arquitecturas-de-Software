@@ -1,9 +1,17 @@
-\section{Análisis de trade-offs (N-Capas vs.\ Clean/Onion/Hexagonal)}
+\section[Análisis de trade-offs]{Análisis de trade-offs\\(N-Capas vs.\ Clean/Onion/Hexagonal)}
 
 \subsection{Enunciado}
-Un equipo construye un sistema de gestión de inventario con arquitectura N-Capas tradicional.
-Tras un año, el sistema es un monolito difícil de mantener: cambios en la base de datos afectan
-la lógica de negocio y la interfaz; las pruebas unitarias son lentas y frágiles.
+Un equipo de desarrollo está construyendo un sistema de gestión de inventario. Inicialmente,
+eligen una Arquitectura N-Capas tradicional por su simplicidad y familiaridad. Después de un
+año, el sistema se ha vuelto un monolito difícil de mantener, donde los cambios en la base de
+datos afectan la lógica de negocio y la interfaz de usuario, y las pruebas unitarias son lentas
+y frágiles.
+
+Con base en los principios de la Arquitectura Limpia y la Arquitectura Hexagonal, explique
+detalladamente qué error fundamental de acoplamiento se está cometiendo y cómo la introducción
+de la Regla de Dependencia (Martin) o el uso de Puertos y Adaptadores (Cockburn) resolverían
+estructuralmente este problema. ¿Cuál sería el impacto en la testabilidad y la capacidad de
+cambiar la base de datos de SQL Server a MongoDB sin afectar la lógica de negocio?
 
 \subsection{Respuesta}
 % TODO: acoplamiento fundamental; Regla de Dependencia (Martin); Puertos y Adaptadores (Cockburn);
