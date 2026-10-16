@@ -1,8 +1,19 @@
 \section{DDD y contextos delimitados en un dominio de seguros}
 
 \subsection{Enunciado}
-Sistema de pólizas de automóviles con siniestros, facturación de primas y app para ajustadores.
-Cada subsistema usa ``póliza'' con significados distintos.
+Una empresa de seguros necesita desarrollar un sistema para gestionar pólizas de automóviles. El
+sistema debe interactuar con un departamento de siniestros, un sistema de facturación de primas
+y una aplicación para que los ajustadores de seguros evalúen daños en el lugar del accidente.
+Cada uno de estos subsistemas tiene su propia terminología y preocupaciones (por ejemplo,
+«póliza» para un actuario es un contrato con cláusulas, para facturación es una fuente de
+ingresos, y para un ajustador es un número de referencia).
+
+Basado en los conceptos de Domain-Driven Design (Evans) y Bounded Context (Richards \& Ford),
+explique cómo dividiría este sistema en varios contextos delimitados. ¿Cómo evitaría que el
+modelo de «Póliza» se contamine con detalles de siniestros o facturación? ¿Cómo se comunicarían
+estos contextos de manera desacoplada? Relacione esta solución con la implementación de una
+Arquitectura Orientada al Dominio (como Onion o Clean) y la creación de un Adaptador de
+Servicio para la comunicación externa, tal como se describe en la Guía de Arquitectura N-Capas.
 
 \subsection{Respuesta}
 % TODO: bounded contexts; evitar contaminación del modelo; comunicación desacoplada;

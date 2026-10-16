@@ -1,8 +1,18 @@
 \section{Kitty Problem y principio abierto/cerrado}
 
 \subsection{Enunciado}
-Describir el Kitty Problem de Richards y Ford; por qué servicios por verbos/entidades funcionales
-lo agravan; diseño alternativo con plugins (Kittens, Rides) y papel de los adaptadores.
+En su libro \emph{Fundamentals of Software Architecture}, Richards y Ford presentan el «Kitty
+Problem» para ilustrar un fallo común en el diseño de arquitecturas orientadas a servicios.
+Describa este problema: un requisito transversal (como la entrega de gatitos) afecta a múltiples
+servicios previamente existentes (TaxiUI, TaxiFinder, TaxiSelector, etc.), requiriendo cambios
+coordinados en todos ellos.
+
+¿Por qué la solución de dividir el sistema en servicios basados en verbos o entidades
+funcionales (como TaxiFinder o TaxiSelector) llevó a este problema? Basándose en los principios
+de DDD y la Arquitectura Onion/Clean, ¿cómo se podría haber diseñado el sistema para que un
+cambio de este tipo afectara a un solo componente o servicio? Proponga una solución utilizando
+componentes como Kittens y Rides que se añadan como plugins, explicando cómo esto respeta el
+Principio de Abierto/Cerrado (OCP) y qué papel juegan los Adaptadores en esta extensión.
 
 \subsection{Respuesta}
 \textit{[Redactar con \parencite{richards2020fundamentals,martin2017clean,palermo2008onion}.]}
