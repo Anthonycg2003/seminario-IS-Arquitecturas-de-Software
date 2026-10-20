@@ -29,12 +29,41 @@ Con base en los principios de la Inversión de Dependencias (Martin) y la Regla 
 \end{itemize}
 
 \subsection{Respuesta}
+
 \subsubsection{Violación de principios}
-% TODO: dirección correcta de dependencias en Hexagonal, Clean y Onion.
+La implementación actual viola el \textbf{Principio de Inversión de Dependencias} (DIP) y, con él, la \textbf{Regla de Dependencia} que articula las arquitecturas Hexagonal, Limpia y Onion. \texttt{OrderProcessor}, que contiene la lógica de negocio de alto nivel, instancia y llama directamente a \texttt{AddressValidatorService}, una clase de infraestructura que a su vez depende de una biblioteca HTTP concreta.
+
+El DIP establece que los módulos de alto nivel no deben depender de los módulos de bajo nivel; ambos deben depender de abstracciones, y las abstracciones no deben depender de los detalles. La Regla de Dependencia de Clean Architecture se formula de manera operativa como:
+
+\begin{quote}
+``Source code dependencies must point only inward, toward higher-level policies.'' \parencite{martin2017clean}
+\end{quote}
+
+En la implementación actual, las dependencias apuntan \textbf{hacia afuera}: el núcleo de negocio conoce y depende de un detalle de infraestructura (HTTP, un proveedor concreto). En términos de la Arquitectura Hexagonal, el hexágono no debería conocer sus adaptadores externos. Así se define el propósito de este estilo precisamente en términos de aislamiento:
+
+\begin{quote}
+``Allow an application to equally be driven by users, programs, automated test or batch scripts, and to be developed and tested in isolation from its eventual run-time devices and databases.'' \parencite{cockburn2005hexagonal}
+\end{quote}
+
+La Arquitectura Onion comparte la misma regla estructural:
+
+\begin{quote}
+``The fundamental rule is that all code can depend on layers more central, but code cannot depend on layers further out from the core. In other words, all coupling is toward the center.'' \parencite{palermo2008onion}
+\end{quote}
+
+La dependencia directa actual impide ese aislamiento: acopla la lógica de negocio a un detalle tecnológico concreto, de modo que cualquier cambio en el mecanismo de validación (o en la biblioteca HTTP subyacente) impacta directamente en el núcleo.
 
 \subsubsection{Rediseño}
-% TODO: interfaz en el núcleo; implementación en infraestructura.
+El rediseño se articula en dos componentes claramente separados:
+
+\begin{enumerate}
+    \item \textbf{Componente en el núcleo (puerto):} se define una interfaz \texttt{AddressValidator} en la capa de aplicación/dominio. Esta interfaz declara el método necesario (por ejemplo, \texttt{validate(address): ValidationResult}) y expresa \emph{qué} necesita la lógica de negocio, sin especificar \emph{cómo} se obtiene. \texttt{OrderProcessor} depende únicamente de esta abstracción.
+    \item \textbf{Componente en infraestructura (adaptador):} se crea una clase denominada \texttt{AddressValidatorHttpAdapter} que implementa \texttt{AddressValidator} utilizando la biblioteca HTTP concreta para comunicarse con el servicio externo. Este adaptador reside fuera del hexágono, en la capa de infraestructura.
+\end{enumerate}
+
+La justificación de este diseño es el principio de que \textbf{los detalles deben depender de las abstracciones}, no al revés. La abstracción (\texttt{AddressValidator}) reside en el núcleo y no conoce HTTP ni ningún proveedor concreto; mientras que la implementación (\texttt{AddressValidatorHttpAdapter}) depende de esa abstracción. Esto alinea el diseño con la regla de la Arquitectura Onion: la base de datos y los servicios externos quedan fuera del núcleo, y el acoplamiento apunta siempre hacia el centro. El mecanismo concreto para que \texttt{OrderProcessor} reciba la implementación sin instanciarla es la \textbf{inyección de dependencias} (por constructor, por método o por fábrica), que materializa la inversión.
 
 \subsubsection{Testabilidad y evolución}
-% TODO: pruebas sin HTTP real; cambio de proveedor.
-\textit{[Fundamentar con \parencite{martin2017clean,cockburn2005hexagonal,palermo2008onion}.]}
+Con el nuevo diseño, \texttt{OrderProcessor} puede probarse de forma aislada inyectando una implementación falsa (\emph{fake}) o un \emph{mock} de \texttt{AddressValidator}. Las pruebas unitarias del núcleo no realizan llamadas HTTP reales, no dependen de la red ni de la biblioteca HTTP subyacente: son rápidas, deterministas y verifican exclusivamente la lógica de negocio. Esto es posible porque la arquitectura hexagonal permite que la aplicación sea desarrollada y probada en aislamiento de sus eventuales dispositivos y bases de datos en tiempo de ejecución.
+
+En cuanto a la mantenibilidad, cambiar el proveedor de validación de direcciones (por ejemplo, de un servicio HTTP a una base de datos local o a otro proveedor externo) solo requiere crear un nuevo adaptador que implemente \texttt{AddressValidator}. El núcleo ---\texttt{OrderProcessor} y la interfaz \texttt{AddressValidator}--- no se modifica. Esto materializa el objetivo del DIP: las políticas de alto nivel no dependen de los detalles; son los detalles los que dependen de las abstracciones. Como consecuencia, el sistema gana en mantenibilidad y capacidad de evolución, ya que los cambios tecnológicos quedan confinados a la capa de infraestructura, siguiendo la regla de dependencia hacia el centro propia de las arquitecturas orientadas al dominio.
