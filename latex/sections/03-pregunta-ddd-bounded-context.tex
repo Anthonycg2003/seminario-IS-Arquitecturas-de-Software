@@ -16,6 +16,105 @@ Arquitectura Orientada al Dominio (como Onion o Clean) y la creación de un Adap
 Servicio para la comunicación externa, tal como se describe en la Guía de Arquitectura N-Capas.
 
 \subsection{Respuesta}
-% TODO: bounded contexts; evitar contaminación del modelo; comunicación desacoplada;
-% relación con Onion/Clean y adaptadores de servicio (guía N-Capas).
-\textit{[Redactar con \parencite{richards2020fundamentals,torre2010guia}.]}
+
+\paragraph{División en contextos delimitados.}
+El enunciado ya muestra la señal que Evans usa para trazar fronteras: la misma palabra
+(«póliza») significa cosas distintas según quién la use. En DDD eso indica que hay varios
+\emph{lenguajes ubicuos}, y cada uno debe vivir en su propio \emph{bounded context}, con su
+propio modelo, su propio código y, según Richards y Ford, también sus propios datos, de modo que
+ningún otro contexto acceda directamente a ellos \parencite{richards2020fundamentals}.
+Propondría cuatro contextos:
+
+\begin{itemize}
+  \item \textbf{Suscripción / Pólizas} (\emph{core domain}): la póliza como contrato. Entidad
+        raíz \texttt{Poliza} con coberturas, cláusulas, vehículo asegurado, vigencia y reglas
+        actuariales. Es el contexto propietario del concepto.
+  \item \textbf{Siniestros}: el \texttt{Siniestro} (reclamación) con su estado, documentación
+        y resolución. De la póliza solo necesita saber si estaba vigente y qué coberturas
+        aplican en la fecha del accidente.
+  \item \textbf{Facturación de primas}: la póliza vista como \texttt{CuentaDeCobro} o
+        \texttt{Contrato\-Facturable}: importe de la prima, plan de pagos, recibos y morosidad.
+  \item \textbf{Peritaje en campo} (aplicación de ajustadores): la \texttt{Inspeccion} con
+        fotos, daños evaluados y estimación de reparación. La póliza aparece solo como un
+        número de referencia (\texttt{PolizaRef}).
+\end{itemize}
+
+Las relaciones entre ellos se documentan en un \emph{mapa de contextos}: Pólizas actúa como
+\emph{upstream} (proveedor) de Siniestros y Facturación, y Peritaje es \emph{downstream} de
+Siniestros.
+
+\paragraph{Evitar la contaminación del modelo de Póliza.}
+\begin{enumerate}
+  \item \textbf{Un modelo por contexto, sin modelo canónico compartido.} No se crea una clase
+        \texttt{Poliza} «universal» con campos de facturación y siniestros. Cada contexto
+        define su propia representación mínima. En Siniestros, por ejemplo, existe un objeto
+        de valor \texttt{CoberturaVigente(numeroPoliza, coberturas, desde, hasta)}, no la
+        entidad completa.
+  \item \textbf{Referencias por identidad.} Los agregados de otros contextos guardan solo el
+        identificador (\texttt{numeroPoliza}), nunca una referencia de objeto ni una clave
+        foránea hacia tablas ajenas. Así se respeta la regla de Richards y Ford de que cada
+        contexto es dueño exclusivo de sus datos \parencite{richards2020fundamentals}.
+  \item \textbf{Capa anticorrupción (ACL).} Cuando un contexto consume datos o eventos de
+        otro, los traduce en la frontera a su propio lenguaje. Si cambia el modelo de Pólizas,
+        solo cambia el traductor y no el dominio consumidor.
+  \item \textbf{Lenguaje publicado.} Pólizas expone un contrato estable (DTO o esquema de
+        evento versionado) que es distinto de su modelo interno. El modelo interno puede
+        evolucionar sin romper a los consumidores.
+\end{enumerate}
+
+\paragraph{Comunicación desacoplada.}
+La vía principal es asíncrona, mediante \textbf{eventos de dominio} publicados en un bus o
+broker de mensajes:
+\begin{itemize}
+  \item Pólizas publica \texttt{PolizaEmitida}, \texttt{PolizaRenovada} y
+        \texttt{PolizaCancelada}. Facturación reacciona generando el plan de cobro, y
+        Siniestros mantiene una réplica local de solo lectura de las coberturas vigentes
+        (consistencia eventual).
+  \item Siniestros publica \texttt{SiniestroRegistrado}. Peritaje crea a partir de él una
+        orden de inspección y, al terminar, publica \texttt{DañosEvaluados}, que Siniestros
+        consume para resolver la reclamación.
+  \item Facturación publica \texttt{PrimaImpagada}. Pólizas puede decidir suspender la
+        cobertura sin que Facturación conozca las reglas del contrato.
+\end{itemize}
+Cuando hace falta una respuesta inmediata (por ejemplo, el ajustador consulta en campo si la
+póliza cubre el daño), se usa una llamada síncrona a un servicio expuesto por el contexto
+propietario a través de su lenguaje publicado y protegida por la ACL del consumidor. Ningún
+contexto llama directamente a las clases ni a la base de datos de otro.
+
+\paragraph{Relación con la arquitectura orientada al dominio y los adaptadores de servicio.}
+Dentro de cada contexto delimitado se aplica una arquitectura en capas orientada al dominio
+(Onion, Clean o hexagonal), como propone la Guía de Arquitectura N-Capas
+\parencite{torre2010guia}:
+\begin{itemize}
+  \item \textbf{Núcleo de dominio}: entidades, agregados, objetos de valor, servicios de
+        dominio y eventos (\texttt{Poliza}, \texttt{Cobertura}, \texttt{PolizaEmitida}). No
+        depende de ningún framework, base de datos ni mensajería.
+  \item \textbf{Capa de aplicación}: casos de uso (\texttt{EmitirPoliza},
+        \texttt{RegistrarSiniestro}) que coordinan el dominio y definen \emph{puertos}
+        (interfaces) como \texttt{IRepositorioPolizas}, \texttt{IPublicadorEventos} o
+        \texttt{IServicioCoberturas}.
+  \item \textbf{Infraestructura}: implementa esos puertos (repositorios ORM, cliente del
+        broker). Todas las dependencias apuntan hacia el centro (inversión de dependencias),
+        y por eso un detalle técnico o de otro contexto no puede filtrarse al dominio.
+  \item \textbf{Capa de servicios distribuidos}: expone el contexto al exterior mediante
+        servicios web o API y DTO, sin publicar las entidades del dominio.
+\end{itemize}
+
+El \textbf{Adaptador de Servicio} de la guía N-Capas es la pieza de infraestructura que
+materializa la ACL. Implementa un puerto definido por el dominio consumidor, invoca al
+servicio o consume el evento externo, y traduce los DTO externos al modelo propio. Por ejemplo,
+en Siniestros:
+\begin{itemize}
+  \item el dominio declara \texttt{IServicioCoberturas.obtenerCobertura(numeroPoliza, fecha)}
+        $\rightarrow$ \texttt{CoberturaVigente};
+  \item \texttt{AdaptadorServicioPolizas} (infraestructura) llama al servicio de Pólizas,
+        recibe su DTO y lo convierte en \texttt{CoberturaVigente};
+  \item si Pólizas cambia de protocolo o de contrato, o se sustituye por un sistema externo
+        heredado, solo se modifica el adaptador.
+\end{itemize}
+
+Así, la estrategia de DDD (contextos delimitados y mapa de contextos) fija las fronteras
+entre subsistemas, y la arquitectura en capas orientada al dominio, junto con los adaptadores
+de servicio, protege cada frontera en el código. Cada contexto conserva un modelo coherente
+con su lenguaje, puede evolucionar y desplegarse de forma independiente y se comunica con los
+demás solo mediante contratos explícitos.
