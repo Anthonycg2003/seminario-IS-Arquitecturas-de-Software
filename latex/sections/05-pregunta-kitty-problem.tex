@@ -15,4 +15,335 @@ componentes como Kittens y Rides que se añadan como plugins, explicando cómo e
 Principio de Abierto/Cerrado (OCP) y qué papel juegan los Adaptadores en esta extensión.
 
 \subsection{Respuesta}
-\textit{[Redactar con \parencite{richards2020fundamentals,martin2017clean,palermo2008onion}.]}
+
+El \emph{Kitty Problem} muestra que repartir un sistema en servicios no basta para desacoplarlo. Si
+los servicios siguen los pasos de un flujo (buscar, elegir, encargar), cualquier requisito que
+cambie la naturaleza del producto atraviesa todos los pasos y obliga a cambiarlos a la vez. La
+salida es trazar las fronteras según los ejes de cambio del negocio, con un núcleo estable que
+defina puntos de extensión y con cada producto (\texttt{Rides}, \texttt{Kittens}) como un componente
+que se enchufa a ese núcleo.
+
+\paragraph{Aclaración sobre la fuente.} El problema no aparece en el libro de Richards y Ford: lo
+presenta Martin en el capítulo 27 de \emph{Clean Architecture}, «Services: Great and Small»
+\parencite[pp.~242--244]{martin2017clean}. \textcite[caps.~8 y~17]{richards2020fundamentals} sí tratan ideas afines
+que se usan más abajo, como la trampa de las entidades y el contexto delimitado como base de la
+granularidad de los servicios.
+
+\subsubsection{El problema: un requisito transversal que obliga a cambiar todos los servicios}
+
+Martin parte de un agregador de taxis que conoce a muchos proveedores de una ciudad y permite a los
+clientes pedir viajes. Para que fuera escalable, se construyó con muchos microservicios pequeños,
+repartidos entre equipos pequeños, cada uno responsable de unos pocos servicios. \texttt{TaxiUI}
+atiende a los clientes;
+\texttt{TaxiFinder} revisa los inventarios de los \texttt{TaxiSuppliers} y deja los candidatos en un
+registro temporal asociado al usuario; \texttt{TaxiSelector} elige entre ellos según los criterios
+del cliente (coste, tiempo, lujo), y \texttt{TaxiDispatcher} encarga el taxi elegido
+\parencite[p.~242]{martin2017clean}.
+
+Tras más de un año en producción, Marketing anuncia un servicio de entrega de gatitos. La empresa
+tendrá puntos de recogida, y un taxi cercano recogerá el gatito y lo llevará a la dirección indicada.
+Solo participa, por ahora, uno de los proveedores. Además, ningún conductor alérgico a los gatos
+debe ser elegido para estas entregas, y a los clientes que declaren esa alergia no se les debe
+asignar un vehículo que haya transportado gatitos en los últimos tres días. La pregunta de Martin es
+cuántos servicios hay que cambiar, y la respuesta es todos. El desarrollo y el despliegue tendrán
+que coordinarse con cuidado; es decir, los servicios están acoplados y no se pueden desarrollar,
+desplegar ni mantener de forma independiente \parencite[p.~243]{martin2017clean}. La
+figura~\ref{fig:p5-kitty} muestra dónde cae el cambio en cada servicio. Ese reparto por servicio es
+una elaboración nuestra a partir de la descripción de Martin.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=7mm and 6mm]
+    \node[figbox, fill=figUiFill, draw=figBad, line width=0.9pt, minimum height=11mm] (ui)
+      {\texttt{TaxiUI}\\[1pt]{\scriptsize atiende al cliente}};
+    \node[figbox, fill=figNucleoFill, draw=figBad, line width=0.9pt, minimum height=11mm,
+          right=of ui] (finder) {\texttt{TaxiFinder}\\[1pt]{\scriptsize busca candidatos}};
+    \node[figbox, fill=figNucleoFill, draw=figBad, line width=0.9pt, minimum height=11mm,
+          right=of finder] (selector) {\texttt{TaxiSelector}\\[1pt]{\scriptsize elige según criterios}};
+    \node[figbox, fill=figNucleoFill, draw=figBad, line width=0.9pt, minimum height=11mm,
+          right=of selector] (dispatcher) {\texttt{TaxiDispatcher}\\[1pt]{\scriptsize encarga el taxi}};
+    \draw[figarr] (ui) -- (finder);
+    \draw[figarr] (finder) -- (selector);
+    \draw[figarr] (selector) -- (dispatcher);
+
+    \node[figbox, fill=figInfraFill, draw=figInfra, below=10mm of finder] (sup)
+      {\texttt{TaxiSuppliers}\\[1pt]{\scriptsize inventarios}};
+    \node[figbox, fill=white, draw=figBad, dashed, line width=0.8pt, below=10mm of selector] (rec)
+      {Registro de candidatos\\[1pt]{\scriptsize datos compartidos}};
+    \draw[figarr] (finder) -- (sup);
+    \draw[figarr] (finder.south east) -- (rec.north west);
+    \draw[figarr] (selector) -- (rec);
+
+    \foreach \n/\txt in {ui/{nuevo tipo de pedido;\\declarar alergias},
+                         finder/{solo proveedores\\adheridos},
+                         selector/{sin conductores alérgicos;\\vehículos con gatitos},
+                         dispatcher/{dos tramos: recogida\\y entrega}} {
+      \node[font=\scriptsize, text=figBad, align=center, anchor=south]
+        at ([yshift=2mm]\n.north) {\txt};
+    }
+    \node[font=\scriptsize, text=figBad, align=left, anchor=west]
+      at ([xshift=2mm]rec.east) {campos nuevos que todos\\deben interpretar igual};
+  \end{tikzpicture}
+  \caption{Descomposición funcional del agregador de taxis y alcance del requisito de los gatitos:
+    deben cambiar todos los servicios del diagrama y también el registro que comparten. Los
+    proveedores se representan como sistemas externos. Elaboración propia a partir de
+    \textcite[pp.~242--243]{martin2017clean}; el reparto del cambio por servicio es nuestro.}
+  \label{fig:p5-kitty}
+\end{figure}
+
+\subsubsection{¿Por qué la división en servicios por verbos o entidades llevó a este problema?}
+
+\paragraph{Porque es una descomposición funcional y el nuevo requisito es transversal.}
+\texttt{TaxiFinder}, \texttt{TaxiSelector} y \texttt{TaxiDispatcher} son los pasos de un único flujo
+(verbos), y en cada paso la lógica genérica está mezclada con la que es propia de los viajes, que es
+justo la parte que Martin extrae después a un componente \texttt{Rides}
+\parencite[p.~244]{martin2017clean}. La entrega de gatitos no añade un paso nuevo: cambia qué
+significa cada paso. Martin lo resume así: es
+el problema de las preocupaciones transversales, y las descomposiciones funcionales como esta son
+muy vulnerables a funcionalidades nuevas que atraviesan todos sus comportamientos
+\parencite[p.~243]{martin2017clean}. En términos de principios, el diseño separó lo que cambia por
+la misma razón. El principio de cierre común pide reunir en un componente las clases que cambian por
+las mismas razones y al mismo tiempo, y separar las que cambian en momentos distintos y por razones
+distintas \parencite[p.~105]{martin2017clean}. Aquí las reglas de un mismo producto quedaron
+repartidas entre cuatro servicios.
+
+\paragraph{Porque los servicios siguen acoplados por los datos que comparten.} Que cada servicio corra
+en su propio proceso los desacopla a nivel de variables, pero no de datos. Si se añade un campo a un
+registro que viaja entre servicios, todos los que lo usan deben cambiar y ponerse de acuerdo en cómo
+interpretarlo (la falacia del desacoplamiento). Mientras haya acoplamiento por datos o por
+comportamiento, el desarrollo y el despliegue tienen que coordinarse (la falacia del desarrollo y
+despliegue independientes) \parencite[pp.~240--241]{martin2017clean}. El registro de candidatos y el
+formato del pedido son ese punto de acoplamiento.
+
+\paragraph{Porque servicio no es sinónimo de frontera arquitectónica.} Para Martin, la arquitectura
+la definen las fronteras que separan la política de alto nivel de los detalles y que respetan la
+Regla de Dependencia; los servicios que solo separan comportamientos de la aplicación son poco más
+que llamadas a funciones caras \parencite[p.~240]{martin2017clean}. Partir por entidades (un
+\texttt{TaxiManager}, un \texttt{DriverManager}) tampoco lo resuelve. Richards y Ford lo llaman la
+trampa de las entidades: crear un componente por entidad no es una arquitectura, sino un mapeo de
+componentes a la base de datos, y suele revelar que no se ha pensado en los flujos reales del
+negocio \parencite[cap.~8]{richards2020fundamentals}. Por eso advierten que los microservicios no
+deben modelarse simplemente a semejanza de entidades individuales de la base de datos
+\parencite[cap.~17]{richards2020fundamentals}. Tanto si se parte por pasos como por entidades, las
+fronteras siguen la estructura técnica o de datos y no los ejes por los que cambia el negocio.
+
+\subsubsection{¿Cómo diseñarlo con DDD y Onion/Clean para que el cambio afecte a un solo componente?}
+
+\paragraph{DDD: fronteras por contexto, no por paso.} Los microservicios se inspiran en el contexto
+delimitado de DDD. Dentro de un contexto, el código y los esquemas de datos están acoplados entre sí,
+pero nunca a nada de otro contexto, ni a su base de datos ni a sus clases; así cada contexto define
+solo lo que necesita \parencite[cap.~17]{richards2020fundamentals}. Aplicado al agregador, «viaje» y
+«entrega de gatito» son dos contextos con lenguaje y reglas propios: puntos de recogida, adhesión
+de proveedores y alergias declaradas solo tienen sentido en el segundo. Lo que comparten es una
+política genérica (encontrar vehículos, elegir uno y encargarlo), que pasa a ser el núcleo estable.
+Las fronteras se trazan donde hay un eje de cambio: los componentes de un lado cambian a otro ritmo
+y por otras razones que los del otro lado \parencite[p.~173]{martin2017clean}. Aquí el eje de cambio
+es el producto.
+
+\paragraph{Onion/Clean: el núcleo define las abstracciones y los productos las implementan.} En Onion,
+el código puede depender de capas más centrales, pero nunca de capas más externas; el núcleo
+necesita implementaciones de sus interfaces, que residen en los bordes y se inyectan en tiempo de
+ejecución \parencite{palermo2008onion}. La Regla de Dependencia de Clean dice lo mismo: las
+dependencias del código fuente solo apuntan hacia las políticas de más alto nivel
+\parencite[p.~203]{martin2017clean}. Martin aplica la misma técnica a cualquier frontera: unos
+componentes contienen las reglas de negocio centrales, otros son plugins con funciones que no forman
+parte del núcleo, y todas las flechas apuntan hacia el núcleo \parencite[p.~173]{martin2017clean}.
+Martin lo resuelve primero con objetos: la mayor parte de la lógica de los servicios originales se
+conserva en las clases base del modelo, la lógica propia de los viajes se extrae a un componente
+\texttt{Rides} y la entrega de gatitos va en un componente \texttt{Kittens}. Ambos sobrescriben las
+clases base abstractas mediante \emph{Template Method} o \emph{Strategy}
+\parencite[p.~244]{martin2017clean}. Con este esquema, al implementar los gatitos cambia
+\texttt{TaxiUI}, pero nada más: basta añadir un \texttt{.jar} (o una \emph{gem}, o una DLL) que se
+carga en tiempo de ejecución, y la funcionalidad queda desacoplada y se puede desarrollar y
+desplegar de forma independiente \parencite[p.~244]{martin2017clean}. Después aplica la misma
+estructura dentro de cada servicio: un servicio puede verse como un conjunto de clases abstractas en
+uno o más \texttt{.jar}, y cada funcionalidad nueva, como otro \texttt{.jar} que las extiende
+\parencite[pp.~245--246]{martin2017clean}.
+
+\paragraph{Qué significa aquí «un solo componente o servicio».} Con el diseño de Martin, el cambio es
+un único componente lógico, \texttt{Kittens}, que se despliega como un \texttt{.jar} en cada servicio,
+y el único servicio que se modifica es \texttt{TaxiUI}. La otra opción, coherente con DDD, es un
+servicio propio de entrega de gatitos: para Richards y Ford, las fronteras de un microservicio deben
+capturar un dominio o un flujo de trabajo \parencite[cap.~17]{richards2020fundamentals}. Ese
+servicio reutilizaría la política genérica de asignación a través de contratos publicados, o
+duplicaría la parte que necesite. Esa duplicación es aceptable cuando el objetivo es un alto
+desacoplamiento, porque se prefiere la duplicación a la reutilización
+\parencite[cap.~17]{richards2020fundamentals}. En ambos casos, el requisito nuevo queda dentro de
+una sola frontera.
+
+\subsubsection{Propuesta: \texttt{Rides} y \texttt{Kittens} como plugins}
+
+La figura~\ref{fig:p5-plugins} aplica esta idea a los tres servicios. Cada servicio conserva su
+núcleo (clases abstractas y puntos de extensión) y recibe la variante de cada producto como
+componente separado: en \texttt{TaxiFinder}, qué proveedores participan; en \texttt{TaxiSelector},
+qué vehículos son admisibles y cómo se ordenan; en \texttt{TaxiDispatcher}, cuántos tramos tiene el
+encargo. Como indica Martin, las fronteras arquitectónicas no caen entre los servicios, sino que los
+atraviesan y los dividen en componentes \parencite[p.~246]{martin2017clean}. Las clases concretas
+las crean fábricas bajo el control de la interfaz de usuario \parencite[p.~244]{martin2017clean}. En
+nuestra lectura, ese papel corresponde al componente \texttt{Main}: según Martin, su tarea es crear
+todas las fábricas, estrategias y demás recursos globales y luego entregar el control a las partes
+abstractas de alto nivel del sistema \parencite[p.~232]{martin2017clean}, y se puede pensar como un
+plugin de la aplicación \parencite[p.~237]{martin2017clean}.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+      core/.style={figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+                   text width=33mm, minimum height=10mm},
+      prod/.style={figbox, fill=figOkFill, draw=figOk, minimum width=16mm},
+      newprod/.style={figbox, fill=figOkFill, draw=figOk, line width=1.3pt, minimum width=16mm},
+      adap/.style={figbox, fill=figAdaptFill, draw=figAdapt, font=\scriptsize, minimum width=16mm}]
+    \foreach \i/\name/\x/\adtxt in {1/TaxiFinder/0/{proveedores\\adheridos},
+                                    2/TaxiSelector/47/{alergias e\\historial},
+                                    3/TaxiDispatcher/94/{puntos de\\recogida}} {
+      \node[core] (core\i) at (\x mm, 0) {núcleo\\[1pt]{\scriptsize clases abstractas y\\puntos de extensión}};
+      \node[prod] (rides\i) at (\x mm - 10.5mm, -17mm) {\texttt{Rides}};
+      \node[newprod] (kit\i) at (\x mm + 10.5mm, -17mm) {\texttt{Kittens}};
+      \node[adap] (ad\i) at (\x mm + 10.5mm, -34mm) {adaptador:\\\adtxt};
+      \draw[figimpl] (rides\i.north) -- (rides\i.north |- core\i.south);
+      \draw[figimpl] (kit\i.north) -- (kit\i.north |- core\i.south);
+      \draw[figimpl] (ad\i.north) -- (kit\i.south);
+      \node[draw=figMuted, dashed, rounded corners=3pt, inner sep=4pt,
+            fit=(core\i) (rides\i) (kit\i) (ad\i)] (svc\i) {};
+      \node[font=\footnotesize\bfseries, text=figInk, anchor=south] at (svc\i.north) {\texttt{\name}};
+    }
+    \node[figbox, fill=figUiFill, draw=figInk, minimum width=132mm, anchor=south]
+      (ui) at ([yshift=12mm]core2.north)
+      {\texttt{TaxiUI} y fábricas (\texttt{Main}): crean la variante \texttt{Rides} o \texttt{Kittens}
+       según el pedido};
+    \foreach \i in {1,2,3} \draw[figarr] (ui.south -| svc\i.north) -- ([yshift=4.5mm]svc\i.north);
+  \end{tikzpicture}
+
+  \vspace{2mm}
+  {\scriptsize
+   \FigSwatch{figNucleoFill}~núcleo, sin cambios \quad
+   \FigSwatch{figOkFill}~componentes de producto (borde grueso: plugin nuevo) \quad
+   \FigSwatch{figAdaptFill}~adaptadores\\[1pt]
+   Flecha discontinua: implementa o extiende, y apunta hacia lo abstracto.}
+  \caption{Diseño basado en componentes. Cada servicio separa un núcleo estable de los componentes
+    de producto; \texttt{Kittens} se añade como plugin en cada servicio y sus puertos los
+    implementan adaptadores. Elaboración propia a partir de \textcite[pp.~244--247]{martin2017clean}
+    y \textcite{cockburn2005hexagonal}.}
+  \label{fig:p5-plugins}
+\end{figure}
+
+La parte más delicada es la regla de las alergias, porque no afecta solo a las entregas: también
+cambia la elección de vehículo en los viajes normales de los clientes alérgicos. Para que eso no
+obligue a tocar \texttt{Rides}, el núcleo de \texttt{TaxiSelector} ofrece un segundo punto de
+extensión: una lista de reglas de admisibilidad que aportan los plugins instalados. El
+fragmento de la figura~\ref{fig:p5-codigo} lo ilustra. El núcleo no nombra ni \texttt{Rides} ni
+\texttt{Kittens}; \texttt{Kittens} aporta su regla y guarda sus propios datos (alergias declaradas,
+historial de entregas) detrás de puertos, en lugar de añadir campos a los registros que comparten
+todos los servicios.
+
+\begin{figure}[H]
+  \centering
+  \begin{minipage}{0.97\linewidth}
+\footnotesize
+\begin{verbatim}
+// ---- Núcleo de TaxiSelector: estable; no conoce Rides ni Kittens ----
+public interface EligibilityRule {                 // punto de extensión
+    boolean allows(Vehicle vehicle, Order order);
+}
+public abstract class TaxiSelector {               // Template Method
+    private final List<EligibilityRule> rules;     // aportadas por los plugins
+    protected TaxiSelector(List<EligibilityRule> rules) { this.rules = rules; }
+    public final Optional<Vehicle> select(List<Vehicle> candidates, Order order) {
+        return candidates.stream()
+            .filter(v -> rules.stream().allMatch(r -> r.allows(v, order)))
+            .min(ranking(order));         // paso variable: lo da cada producto
+    }
+    protected abstract Comparator<Vehicle> ranking(Order order);
+}
+
+// ---- Componente Kittens (un .jar nuevo): extiende sin tocar el núcleo ----
+public final class KittenAllergyRule implements EligibilityRule {
+    private final AllergyRegistry allergies;       // puerto propio de Kittens
+    private final KittenDeliveryLog deliveries;    // puerto propio de Kittens
+    // (constructor que recibe ambos puertos omitido)
+    @Override
+    public boolean allows(Vehicle vehicle, Order order) {
+        if (order instanceof KittenOrder)  // entrega: conductor no alérgico
+            return !allergies.isAllergic(vehicle.driver());
+        return !(allergies.isAllergic(order.customer())  // viaje de cliente
+                 && deliveries.carriedKittenWithin(vehicle, Duration.ofDays(3)));
+    }
+}
+\end{verbatim}
+  \end{minipage}
+  \caption{Fragmento ilustrativo en Java (el ejemplo de Martin habla de \texttt{.jar} y clases
+    abstractas). \texttt{RideSelector} y \texttt{KittenSelector} extienden \texttt{TaxiSelector}
+    con su propio orden de preferencia; las fábricas de \texttt{Main} registran las reglas de todos
+    los plugins instalados. Elaboración propia.}
+  \label{fig:p5-codigo}
+\end{figure}
+
+\subsubsection{Cómo respeta la solución el OCP y qué papel juegan los adaptadores}
+
+\paragraph{Principio de abierto/cerrado.} Un artefacto de software debe estar abierto a la extensión
+y cerrado a la modificación: su comportamiento debe poder ampliarse sin modificarlo
+\parencite[p.~70]{martin2017clean}. En la solución, añadir los gatitos consiste en desplegar
+componentes nuevos con clases que extienden las abstracciones del núcleo, no en redesplegar servicios
+modificados. Basta añadir los nuevos \texttt{.jar} a las rutas de carga de los servicios, y por eso
+la ampliación cumple el OCP \parencite[p.~246]{martin2017clean}. A escala de arquitectura, el OCP se
+consigue repartiendo el sistema en componentes y ordenándolos en una jerarquía de dependencias que
+proteja a los de más alto nivel de los cambios en los de más bajo nivel
+\parencite[p.~75]{martin2017clean}. El núcleo y \texttt{Rides} quedan cerrados; el sistema, abierto.
+
+Hay que matizar que el cierre nunca es total. El propio Martin reconoce que \texttt{TaxiUI} debe
+cambiar \parencite[p.~244]{martin2017clean}, y en otra obra advierte que, por cerrado que esté un
+módulo, siempre habrá algún cambio frente al que no lo esté. Como el cierre no puede ser completo,
+tiene que ser estratégico: el diseñador elige frente a qué cambios protegerse y construye las
+abstracciones para ello \parencite[p.~105]{martin2014agile}. En este caso, si el núcleo de
+\texttt{TaxiDispatcher} solo supiera encargar viajes de un tramo, el primer producto de dos tramos
+obligaría a modificarlo una vez para abrir ese punto de extensión. A partir de ahí, productos
+parecidos, como la entrega de paquetes, serían extensiones puras.
+
+\paragraph{Papel de los adaptadores.} En la arquitectura hexagonal, un puerto identifica una
+conversación con un propósito, y suele haber varios adaptadores por puerto, uno por cada tecnología
+que se conecta a él \parencite[sec.~«Nature of the Solution»]{cockburn2005hexagonal}. En la extensión
+de los gatitos, los adaptadores cumplen tres funciones:
+\begin{enumerate}
+  \item \textbf{Conectan el plugin con el exterior sin contaminar el núcleo.} \texttt{Kittens}
+    necesita conversar con actores nuevos: el registro de puntos de recogida, los datos de adhesión
+    de los proveedores, las alergias declaradas y el historial de entregas. Define un puerto para
+    cada uno (\texttt{CollectionPoints}, \texttt{ParticipatingSuppliers}, \texttt{AllergyRegistry} y
+    \texttt{KittenDeliveryLog}), y los implementan adaptadores de infraestructura, por ejemplo uno
+    SQL o uno que consulte la API de un proveedor (figura~\ref{fig:p5-plugins}). El núcleo y
+    \texttt{Rides} no se enteran.
+  \item \textbf{Hacen posible probar el plugin aislado.} El mismo puerto admite un adaptador en
+    memoria para las pruebas \parencite[sec.~«Nature of the Solution»]{cockburn2005hexagonal}, así
+    que las reglas de \texttt{KittenAllergyRule} se verifican sin base de datos ni proveedores reales.
+  \item \textbf{Concentran el único cambio inevitable.} \texttt{TaxiUI} es un adaptador primario,
+    es decir, del lado de los actores que conducen la aplicación
+    \parencite[sec.~«The Left-Right Asymmetry»]{cockburn2005hexagonal}. Añade el nuevo tipo de
+    pedido y la declaración de alergias y, junto con las fábricas, decide qué implementación usar.
+    El cambio queda en el borde, que es donde debe estar.
+\end{enumerate}
+
+\subsubsection{Aplicación a nuestro proyecto}
+
+El documento de arquitectura del sistema de horarios ya prevé el patrón \emph{Strategy} para el
+generador, de modo que una estrategia nueva se añada como un módulo sin tocar las
+rutas\footnote{\raggedright Véase \texttt{docs/architecture.md}, sección 5.4, en el repositorio del
+proyecto: \url{https://github.com/Anthonycg2003/sistema-horarios-docentes}.}. Es el mismo mecanismo
+a pequeña escala. La lección del \emph{Kitty Problem} es llevarlo a todo el sistema: si mañana se
+pidiera un nuevo tipo de horario, por ejemplo de exámenes, debería llegar como un componente que
+implemente los puntos de extensión de la generación y la validación, y no como cambios repartidos
+por rutas, servicios y repositorios.
+
+\subsubsection{Síntesis}
+
+\begin{itemize}
+  \item El \emph{Kitty Problem} \parencite[pp.~242--244]{martin2017clean} muestra que un requisito
+    transversal obliga a cambiar y desplegar a la vez todos los servicios de una descomposición
+    funcional.
+  \item El origen es partir por pasos (verbos) o por entidades. Así se reparten entre servicios las
+    reglas que cambian juntas, y los servicios siguen acoplados por los datos que comparten.
+  \item Con DDD y Onion/Clean, las fronteras siguen los ejes de cambio del negocio: un núcleo estable
+    con puntos de extensión y un componente por producto (\texttt{Rides}, \texttt{Kittens}), con
+    todas las dependencias apuntando hacia el núcleo.
+  \item Los gatitos se añaden como plugins sin modificar el núcleo ni \texttt{Rides}, lo que cumple
+    el OCP. El cierre es estratégico y no total: \texttt{TaxiUI} cambia, y los adaptadores conectan
+    el plugin con sus fuentes de datos y con las pruebas sin tocar el núcleo.
+\end{itemize}
