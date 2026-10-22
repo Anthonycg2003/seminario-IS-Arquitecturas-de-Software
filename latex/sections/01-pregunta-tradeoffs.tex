@@ -14,6 +14,335 @@ estructuralmente este problema. ¿Cuál sería el impacto en la testabilidad y l
 cambiar la base de datos de SQL Server a MongoDB sin afectar la lógica de negocio?
 
 \subsection{Respuesta}
-% TODO: acoplamiento fundamental; Regla de Dependencia (Martin); Puertos y Adaptadores (Cockburn);
-% impacto en testabilidad; cambio SQL Server $\rightarrow$ MongoDB sin afectar el dominio.
-\textit{[Redactar la respuesta con citas, por ejemplo \parencite{martin2017clean,cockburn2005hexagonal}.]}
+
+\subsubsection{¿Qué error fundamental de acoplamiento se está cometiendo y cómo la introducción de la Regla de Dependencia (Martin) o el uso de Puertos y Adaptadores (Cockburn) resolverían estructuralmente este problema?}
+
+En una arquitectura N-Capas \emph{clásica} (figura~\ref{fig:n-capas}) hay una separación física
+en proyectos, módulos o ensamblados .
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=8mm]
+    \node[figbox, fill=figUiFill, minimum width=12.2cm] (ui) {%
+      \textbf{Presentación}\\[1pt]
+      {\scriptsize\color{figMuted} Proyecto.Presentacion · vistas y controladores}};
+    \node[figbox, fill=figNegFill, minimum width=12.2cm, below=of ui] (neg) {%
+      \textbf{Lógica de negocio}\\[1pt]
+      {\scriptsize\color{figMuted} Proyecto.Negocio · servicios de aplicación}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=12.2cm, below=of neg] (dat) {%
+      \textbf{Acceso a datos}\\[1pt]
+      {\scriptsize\color{figMuted} Proyecto.Datos · ORM, SQL y procedimientos almacenados}};
+    \draw[figarr] (ui.south) -- (neg.north);
+    \draw[figarr] (neg.south) -- (dat.north);
+    \node[font=\scriptsize, text=figMuted, anchor=west]
+      at ($(ui.south)!0.5!(neg.north)+(0.28,0)$) {depende de};
+    \node[font=\scriptsize, text=figMuted, anchor=west]
+      at ($(neg.south)!0.5!(dat.north)+(0.28,0)$) {depende de};
+  \end{tikzpicture}
+  \caption{Arquitectura N-Capas clásica. Cada capa puede vivir en un ensamblado distinto, pero la dependencia de compilación apunta hacia el detalle inferior.}
+  \label{fig:n-capas}
+\end{figure}
+
+Esa separación no garantiza el aislamiento conceptual del dominio.
+Cuando las capas superiores dependen directamente de detalles concretos (ORM, consultas SQL,
+DTOs de persistencia, controles de interfaz), el \textbf{dominio queda acoplado a la
+infraestructura} y a los mecanismos de entrega (figura~\ref{fig:acoplamiento})
+\parencite{martin2017clean,torre2010guia}.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=7mm and 6mm]
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+          minimum width=4.7cm, minimum height=1.7cm] (dom) {%
+      \textbf{Dominio}\\[1pt]
+      {\scriptsize reglas de inventario}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=4.15cm, above=of dom] (ui) {%
+      \textbf{Controles de interfaz}\\[1pt]
+      {\scriptsize vistas, grids, controladores}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=4.15cm, left=of dom] (sql) {%
+      \textbf{SqlConnection y ORM}\\[1pt]
+      {\scriptsize consultas y esquema}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=4.15cm, right=of dom] (dto) {%
+      \textbf{DTOs de persistencia}\\[1pt]
+      {\scriptsize filas, tablas, documentos}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=4.15cm, below=of dom] (sp) {%
+      \textbf{Procedimientos almacenados}\\[1pt]
+      {\scriptsize reglas escritas en SQL}};
+    \draw[figarrbad] (dom) -- (ui);
+    \draw[figarrbad] (dom) -- (sql);
+    \draw[figarrbad] (dom) -- (dto);
+    \draw[figarrbad] (dom) -- (sp);
+  \end{tikzpicture}
+  \caption{Error de acoplamiento. Las flechas salen del dominio: la lógica de inventario depende de la interfaz y de la persistencia, así que un cambio de esquema atraviesa el negocio y la UI. Elaboración propia.}
+  \label{fig:acoplamiento}
+\end{figure}
+
+El síntoma del enunciado (cambios en la base de datos que arrastran reglas de negocio y UI;
+pruebas lentas y frágiles) suele deberse a una violación combinada de:
+
+\begin{itemize}
+  \item \textbf{Dependencias invertidas incorrectamente:} la lógica de negocio importa tipos del
+    acceso a datos o del framework web, en lugar de que la infraestructura implemente contratos
+    definidos por el dominio \parencite{martin2017clean}.
+  \item \textbf{Modelo anémico y lógica dispersa:} las reglas de inventario viven en servicios de
+    aplicación o en procedimientos almacenados, mientras las entidades son meros contenedores de
+    datos, lo que difumina el límite entre ``negocio'' y ``persistencia''.
+  \item \textbf{Acoplamiento transversal:} transacciones, validaciones y mapeos repetidos en cada
+    capa generan un monolito lógico en el que ningún cambio local es verdaderamente local.
+\end{itemize}
+
+En términos de atributos de calidad, el sistema sacrifica \emph{mantenibilidad} y
+\emph{testabilidad} por una simplicidad inicial de despliegue en un solo proceso
+\parencite{richards2020fundamentals}.
+
+La Arquitectura Limpia organiza el software en anillos concéntricos: entidades y casos de uso en el
+centro; interfaces, persistencia y frameworks en el exterior \parencite{martin2017clean}. La
+\textbf{Regla de Dependencia} exige que todo vector de dependencia (importaciones, herencia,
+referencias) apunte \emph{hacia adentro}. Nada en el núcleo puede conocer SQL Server, MongoDB,
+HTTP ni la UI (figura~\ref{fig:anillos}).
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[font=\footnotesize]
+    \def\rA{1.62}
+    \def\rB{2.68}
+    \def\rC{3.74}
+    \def\rD{4.80}
+    \fill[figRingFw] (0,0) circle (\rD);
+    \fill[figRingAd] (0,0) circle (\rC);
+    \fill[figRingUc] (0,0) circle (\rB);
+    \fill[figRingEn] (0,0) circle (\rA);
+    \draw[figInk, line width=0.55pt] (0,0) circle (\rD);
+    \draw[figInk, line width=0.55pt] (0,0) circle (\rC);
+    \draw[figInk, line width=0.55pt] (0,0) circle (\rB);
+    \draw[figInk, line width=0.55pt] (0,0) circle (\rA);
+    \node[align=center, text=white, font=\scriptsize] at (0,0.02) {%
+      \textbf{\footnotesize Entidades}\\[2pt]
+      Producto\\[-1pt] Almacén\\[-1pt] Movimiento};
+    \node at (90:2.15) {Casos de uso};
+    \node at (90:3.21) {Adaptadores};
+    \node at (90:4.27) {Frameworks};
+    \draw[-{Stealth[length=2.5mm,width=1.9mm]}, line width=0.8pt, draw=figNucleo]
+      (0,-5.28) -- (0,-1.78);
+    \node[anchor=east, font=\scriptsize, text=figNucleo]
+      at (-0.22,-5.35) {Regla de dependencia};
+    \node[anchor=north west, align=left, font=\scriptsize] at (5.15,3.05) {%
+      \FigSwatch{figRingFw}\hspace{1.3mm}\textbf{Frameworks y drivers}\\
+      \hspace*{5.1mm}UI, HTTP, SQL Server, MongoDB\\[6pt]
+      \FigSwatch{figRingAd}\hspace{1.3mm}\textbf{Adaptadores de interfaz}\\
+      \hspace*{5.1mm}controladores y gateways\\[6pt]
+      \FigSwatch{figRingUc}\hspace{1.3mm}\textbf{Casos de uso}\\
+      \hspace*{5.1mm}\texttt{RegistrarEntradaDeStock}\\[6pt]
+      \FigSwatch{figRingEn}\hspace{1.3mm}\textbf{Entidades}\\
+      \hspace*{5.1mm}Producto, Almacén, Movimiento%
+    };
+  \end{tikzpicture}
+  \caption{Regla de dependencia. El código solo puede depender hacia el centro: los casos de uso y las entidades no conocen SQL Server, MongoDB, HTTP ni la interfaz. Elaboración propia a partir de \parencite{martin2017clean}.}
+  \label{fig:anillos}
+\end{figure}
+
+Aplicado al inventario, por ejemplo, el caso de uso \emph{RegistrarEntradaDeStock} dependería de una abstracción
+(\texttt{IRepositorioDeProducto} o un puerto equivalente), no de \texttt{SqlConnection} ni de
+documentos BSON. La capa de datos implementa esa abstracción y traduce entre el modelo de dominio y
+el almacén concreto. Así, un cambio de esquema relacional a documentos no reescribe reglas de
+negocio: solo sustituye o añade un adaptador de salida (figura~\ref{fig:inventario}).
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=11mm]
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt, minimum width=8.8cm] (uc) {%
+      \textbf{RegistrarEntradaDeStock}\\[1pt]
+      {\scriptsize caso de uso · reglas de inventario}};
+    \node[figbox, fill=white, draw=figNucleo, line width=0.9pt, minimum width=8.8cm, below=of uc] (port) {%
+      \texttt{IRepositorioDeProducto}\\[1pt]
+      {\scriptsize puerto de salida, definido en el núcleo}};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, text width=4.85cm,
+          anchor=north] (sql) at ([xshift=-3.2cm,yshift=-12mm]port.south) {%
+      {\scriptsize\texttt{SqlServerInventarioAdapter}}\\[2pt]
+      {\scriptsize tablas y transacciones ACID}\\[1pt]
+      {\scriptsize\color{figMuted} SQL Server}};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, text width=4.85cm,
+          anchor=north] (mongo) at ([xshift=3.2cm,yshift=-12mm]port.south) {%
+      {\scriptsize\texttt{MongoInventarioAdapter}}\\[2pt]
+      {\scriptsize colecciones y mapeo a documentos}\\[1pt]
+      {\scriptsize\color{figMuted} MongoDB}};
+    \draw[figarr] (uc.south) -- (port.north);
+    \node[font=\scriptsize, text=figMuted, anchor=west]
+      at ($(uc.south)!0.5!(port.north)+(0.22,0)$) {depende de};
+    \draw[figimpl] (sql.north) -- (port.south -| sql.north);
+    \draw[figimpl] (mongo.north) -- (port.south -| mongo.north);
+    \node[font=\scriptsize, text=figAdapt] at ($(port.south)+(0,-0.48)$) {implementan};
+    \draw[decorate, decoration={brace, amplitude=4.5pt, mirror}, draw=figOk, line width=0.6pt]
+      (sql.south west) -- (mongo.south east)
+      node[midway, below=8pt, font=\scriptsize, align=center, text=figOk]
+      {intercambiables: el caso de uso no se recompila};
+  \end{tikzpicture}
+  \caption{El caso de uso depende del puerto, no del motor. SQL Server y MongoDB quedan detrás de adaptadores que implementan la misma abstracción.}
+  \label{fig:inventario}
+\end{figure}
+
+La Arquitectura Hexagonal expresa el mismo principio con la metáfora de \textbf{puertos}
+(interfaces que el dominio expone o requiere) y \textbf{adaptadores} (implementaciones concretas
+para UI, API, base de datos, mensajería) \parencite{cockburn2005hexagonal}. El núcleo de la
+aplicación permanece aislado; los adaptadores son intercambiables.
+
+\begin{itemize}
+  \item \textbf{Puerto de entrada:} por ejemplo, \texttt{GestionarInventario} invocado desde una
+    API REST o una consola; ambos son adaptadores de entrada distintos sobre el mismo puerto.
+  \item \textbf{Puerto de salida:} por ejemplo, \texttt{PersistirMovimientoDeInventario}; un
+    adaptador habla con SQL Server y otro con MongoDB sin que el dominio distinga el motor.
+\end{itemize}
+
+Estructuralmente, esto rompe el acoplamiento en cadena ``UI $\rightarrow$ servicio
+$\rightarrow$ repositorio concreto'' y lo reemplaza por ``adaptador $\rightarrow$ aplicación
+$\rightarrow$ puerto'', con las dependencias cerradas hacia el centro (figura~\ref{fig:hexagonal}).
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[font=\footnotesize]
+    \def\R{2.15}
+    \draw[fill=figNucleoFill, draw=figNucleo, line width=0.9pt]
+      (90:\R) -- (150:\R) -- (210:\R) -- (270:\R) -- (330:\R) -- (30:\R) -- cycle;
+    \node[align=center] at (0,0) {%
+      \textbf{Núcleo}\\[1pt]
+      {\scriptsize casos de uso y entidades}};
+    \node[figbox, fill=white, draw=figNucleo, line width=0.8pt,
+          minimum width=2.55cm, anchor=east] (pin) at (-2.22,0) {%
+      {\scriptsize\texttt{Gestionar}}\\
+      {\scriptsize\texttt{Inventario}}\\
+      {\scriptsize\color{figMuted}entrada}};
+    \node[figbox, fill=white, draw=figNucleo, line width=0.8pt,
+          minimum width=2.55cm, anchor=west] (pout) at (2.22,0) {%
+      {\scriptsize\texttt{Persistir}}\\
+      {\scriptsize\texttt{Movimiento}}\\
+      {\scriptsize\color{figMuted}salida}};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=2.7cm, anchor=east]
+      (api) at (-5.15,0.92) {API REST};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=2.7cm, anchor=east]
+      (cli) at (-5.15,-0.92) {Consola};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=2.7cm, anchor=west]
+      (sql) at (5.15,0.92) {SQL Server};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=2.7cm, anchor=west]
+      (mongo) at (5.15,-0.92) {MongoDB};
+    \draw[figarr] (api.east) -- (pin.north west);
+    \draw[figarr] (cli.east) -- (pin.south west);
+    \draw[figarr] (sql.west) -- (pout.north east);
+    \draw[figarr] (mongo.west) -- (pout.south east);
+    \node[font=\scriptsize, text=figMuted, anchor=north] at (0,-2.72)
+      {Las flechas apuntan al núcleo: el adaptador depende del puerto, no al revés.};
+  \end{tikzpicture}
+  \caption{Puertos y adaptadores. La API y la consola usan el mismo puerto de entrada; SQL Server y MongoDB implementan el de salida. El núcleo no distingue el canal ni el motor. Elaboración propia a partir de \parencite{cockburn2005hexagonal}.}
+  \label{fig:hexagonal}
+\end{figure}
+
+\subsubsection{¿Cuál sería el impacto en la testabilidad y la capacidad de cambiar la base de datos de SQL Server a MongoDB sin afectar la lógica de negocio?}
+
+Con dependencias hacia adentro, los casos de uso y las entidades se prueban con \textbf{dobles de
+prueba} en memoria (repositorios falsos, relojes controlados, buses de eventos simulados) sin levantar
+base de datos ni servidor web \parencite{martin2017clean,cockburn2005hexagonal}. Las pruebas dejan
+de ser de integración pesada por defecto y pasan a ser unitarias rápidas y deterministas.
+
+Además, al no filtrar detalles de persistencia al dominio, los tests dejan de romperse por cambios
+cosméticos en columnas o en el framework de UI: solo fallan cuando se altera un contrato de puerto
+o una regla de negocio explícita (figura~\ref{fig:testabilidad}).
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=6.5mm]
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=5.15cm] (a1) {Prueba};
+    \node[font=\footnotesize\bfseries, text=figBad, anchor=south] (ha)
+      at ([yshift=1.6mm]a1.north) {Acoplada};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=5.15cm, below=of a1] (a2) {Servicio de inventario};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=5.15cm, below=of a2] (a3) {%
+      SQL Server\\y servidor web};
+    \node[font=\scriptsize\bfseries, text=figBad, below=1.5mm of a3] (afoot) {lenta y frágil};
+    \draw[figarrbad] (a1) -- (a2);
+    \draw[figarrbad] (a2) -- (a3);
+
+    \node[figbox, fill=figOkFill, draw=figOk, minimum width=5.35cm, right=12mm of a1] (b1) {Prueba};
+    \node[font=\footnotesize\bfseries, text=figOk, anchor=south] (hb)
+      at ([yshift=1.6mm]b1.north) {Con puertos};
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, minimum width=5.35cm, below=of b1] (b2) {%
+      \texttt{\scriptsize RegistrarEntradaDeStock}};
+    \node[figbox, fill=figOkFill, draw=figOk, minimum width=5.35cm, below=of b2] (b3) {%
+      Doble en memoria\\
+      {\scriptsize repositorio, reloj, bus de eventos}};
+    \node[font=\scriptsize\bfseries, text=figOk, below=1.5mm of b3] (bfoot) {rápida y determinista};
+    \draw[figarrook] (b1) -- (b2);
+    \draw[figarrook] (b2) -- (b3);
+  \end{tikzpicture}
+  \caption{Efecto en la testabilidad. A la izquierda la prueba arrastra la base de datos y el servidor web. A la derecha el caso de uso se ejerce con dobles en memoria y no se entera de un cambio cosmético de columnas. }
+  \label{fig:testabilidad}
+\end{figure}
+
+Supongamos que el dominio modela \emph{Producto}, \emph{Almacén} y \emph{Movimiento} con invariantes
+(propiedades de stock no negativo, reservas coherentes, etc.). Bajo N-Capas acopladas, migrar a
+MongoDB implica retocar servicios, mapeos, validaciones y posiblemente pantallas que asumían
+identificadores o joins relacionales.
+
+Con Regla de Dependencia y puertos/adaptadores:
+
+\begin{enumerate}
+  \item Se define (o se mantiene) el puerto \texttt{IRepositorioDeInventario} en el núcleo.
+  \item El adaptador \texttt{SqlServerInventarioAdapter} implementa el puerto con tablas y
+    transacciones ACID.
+  \item Un nuevo \texttt{MongoInventarioAdapter} implementa el mismo puerto con colecciones y,
+    si hace falta, transacciones multi-documento; el mapeo documento--entidad vive solo en el
+    adaptador.
+  \item La composición (inyección de dependencias en el arranque de la aplicación) selecciona el
+    adaptador según configuración, sin recompilar el dominio.
+\end{enumerate}
+
+La lógica de negocio permanece idéntica; el coste de migración se acota a infraestructura, pruebas
+de adaptador y estrategia de datos (dual write, backfill, corte), no a reescribir reglas de
+inventario (figura~\ref{fig:migracion}) \parencite{richards2015patterns,martin2017clean}.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}
+    \node[draw=figOk, fill=figOkFill, rounded corners=2pt, line width=0.8pt,
+          minimum width=6.45cm, minimum height=3.85cm] (stay) {};
+    \node[anchor=north, font=\footnotesize\bfseries, text=figOk]
+      at ([yshift=-2.4mm]stay.north) {No se recompila};
+    \node[anchor=north west, font=\scriptsize, align=left]
+      at ([xshift=3.2mm,yshift=-8.2mm]stay.north west)
+      {Entidades: Producto, Almacén\\
+       y Movimiento.\\[3pt]
+       Caso de uso:\\
+       \texttt{RegistrarEntradaDeStock}.\\[3pt]
+       Puerto:\\
+       \texttt{IRepositorioDeInventario}.};
+
+    \node[draw=figInfra, fill=figInfraFill, rounded corners=2pt, line width=0.8pt,
+          minimum width=6.45cm, minimum height=3.85cm, right=5mm of stay] (swap) {};
+    \node[anchor=north, font=\footnotesize\bfseries, text=figInfra]
+      at ([yshift=-2.4mm]swap.north) {Se sustituye};
+    \node[anchor=north west, font=\scriptsize, align=left]
+      at ([xshift=3.2mm,yshift=-8.2mm]swap.north west)
+      {\texttt{SqlServerInventarioAdapter}\\
+       sale del sistema.\\[3pt]
+       Entra \texttt{MongoInventarioAdapter}.\\[3pt]
+       Colecciones, mapeo y\\
+       transacciones del motor.\\[3pt]
+       Se rehacen las pruebas del adaptador,\\
+       no las reglas.};
+
+    \coordinate (midpanels) at ($(stay.south)!0.5!(swap.south)$);
+    \node[figbox, fill=figUiFill, minimum width=13.4cm, anchor=north]
+      (boot) at ([yshift=-5.5mm]midpanels) {%
+      Arranque: la composición elige el adaptador por configuración};
+    \draw[figarr] (boot.north -| stay.center) -- (stay.south);
+    \draw[figarr] (boot.north -| swap.center) -- (swap.south);
+  \end{tikzpicture}
+  \caption{Límite del cambio de SQL Server a MongoDB. El núcleo y el puerto permanecen; el coste queda en el adaptador, en sus pruebas y en la estrategia de datos. }
+  \label{fig:migracion}
+\end{figure}
+
+\subsubsection{Síntesis}
+
+El error no es haber elegido N-Capas al inicio, sino permitir que las dependencias del dominio
+apunten hacia afuera hacia detalles volátiles. La Regla de Dependencia y los puertos/adaptadores
+no añaden capas por capricho: \textbf{invierten el flujo de control} para que el negocio mande sobre
+la tecnología. El resultado es un sistema más costoso de diseñar al principio, pero con pruebas
+rápidas y con la libertad de sustituir SQL Server por MongoDB (u otro almacén) sin erosionar el
+núcleo del inventario.
