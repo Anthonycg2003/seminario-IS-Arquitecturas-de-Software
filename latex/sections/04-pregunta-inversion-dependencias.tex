@@ -1,7 +1,32 @@
 \section{Inversión de dependencias en la práctica}
 
 \subsection{Enunciado}
-\texttt{OrderProcessor} depende directamente de \texttt{AddressValidatorService} y de una biblioteca HTTP.
+Un equipo de desarrollo está trabajando en un sistema de gestión de pedidos. La lógica de negocio
+principal se encuentra en una clase \texttt{OrderProcessor} que, para completar su tarea,
+necesita comunicarse con un servicio externo de validación de direcciones. La implementación
+actual tiene una dependencia directa: \texttt{OrderProcessor} instancia y llama directamente a la
+clase \texttt{AddressValidatorService}, que a su vez depende de una librería HTTP específica para
+comunicarse con el servicio externo.
+
+Con base en los principios de la Inversión de Dependencias (Martin) y la Regla de Dependencia
+(Martin), analice y responda:
+
+\begin{itemize}
+  \item \textbf{a)} ¿Por qué esta dependencia directa viola los principios fundamentales de las
+    arquitecturas Hexagonal, Limpia y Onion? Explique específicamente qué dirección deberían
+    tener las dependencias del código fuente y por qué la implementación actual no la cumple.
+  \item \textbf{b)} Rediseñe la interacción entre \texttt{OrderProcessor} y
+    \texttt{AddressValidatorService} para que se alinee con los principios de estas
+    arquitecturas. Defina claramente qué componente (interfaz) debe residir en el núcleo de la
+    aplicación y qué componente debe residir en la capa de infraestructura o en el exterior del
+    hexágono. Justifique su diseño basándose en el principio de que «los detalles deben depender
+    de las abstracciones».
+  \item \textbf{c)} Explique cómo este nuevo diseño permite que la lógica de negocio
+    (\texttt{OrderProcessor}) sea probada de forma aislada, sin necesidad de realizar llamadas
+    HTTP reales al servicio externo, y sin depender de la librería HTTP subyacente. ¿Qué
+    implicaciones tiene este diseño para la mantenibilidad y la capacidad de cambiar el proveedor
+    de validación de direcciones en el futuro?
+\end{itemize}
 
 \subsection{Respuesta}
 
