@@ -15,4 +15,178 @@ desacoplamiento, son inherentemente más adecuadas que una Arquitectura N-Capas,
 optimizaciones.
 
 \subsection{Respuesta}
-\textit{[Redactar con \parencite{richards2015patterns,richards2020fundamentals,martin2017clean}.]}
+
+\subsubsection{Capas abiertas y \emph{fast-lane reader}: beneficio local, coste estructural}
+La Arquitectura N-Capas organiza el sistema en capas horizontales (presentación, negocio, persistencia) con dependencias que fluyen de arriba hacia abajo. Su principal fortaleza es la simplicidad; su principal debilidad, que cada petición debe atravesar todas las capas, incluidas aquellas que solo transportan datos sin ejecutar lógica relevante \parencite{richards2015patterns}. Las \textbf{capas abiertas} relajan esa regla: permiten que una petición salte capas intermedias. El caso típico, que el enunciado denomina \emph{fast-lane reader}, es una lectura simple en la que la presentación accede directamente a la de persistencia, evitando el recorrido por la capa de negocio \parencite{richards2020fundamentals}.
+
+El beneficio es real pero acotado: mejora el rendimiento en lecturas simples y reduce la latencia artificial de las capas que solo hacen \emph{pass-through}. El coste también es real: se pierde el \textbf{aislamiento de capas}, que es la segunda ventaja que la arquitectura ofrecía, después de la simplicidad. Si la presentación conoce la persistencia, un cambio de esquema o de motor impacta directamente en la UI, y la evolución independiente de cada capa deja de ser posible: la mantenibilidad a largo plazo se deteriora \parencite{richards2020fundamentals}. La figura~\ref{fig:capas-abiertas} contrasta ambos escenarios.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=10mm]
+    \useasboundingbox (-1.4, -2.1) rectangle (13.4, 4.4);
+
+    % IZQUIERDA
+    \node[figbox, fill=figUiFill, minimum width=4cm, minimum height=0.9cm] (ui1) at (2.0, 3.2) {%
+      \textbf{Presentación}\\[-1pt]{\scriptsize\color{figMuted} vistas, controladores}};
+    \node[figbox, fill=figNegFill, minimum width=4cm, minimum height=0.9cm, below=of ui1] (neg1) {%
+      \textbf{Negocio}\\[-1pt]{\scriptsize\color{figMuted} servicios, reglas}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=4cm, minimum height=0.9cm, below=of neg1] (dat1) {%
+      \textbf{Persistencia}\\[-1pt]{\scriptsize\color{figMuted} ORM, SQL}};
+    \draw[figarr] (ui1) -- (neg1);
+    \draw[figarr] (neg1) -- (dat1);
+    \node[font=\footnotesize\bfseries, text=figMuted, above=3mm of ui1] {Capas cerradas};
+    \node[font=\scriptsize, text=figMuted, align=center, below=3mm of dat1] {Toda petición recorre todas las capas};
+
+    % DERECHA
+    \node[figbox, fill=figUiFill, minimum width=4cm, minimum height=0.9cm] (ui2) at (9.5, 3.2) {%
+      \textbf{Presentación}\\[-1pt]{\scriptsize\color{figMuted} vistas, controladores}};
+    \node[figbox, fill=figNegFill, minimum width=4cm, minimum height=0.9cm, below=of ui2] (neg2) {%
+      \textbf{Negocio}\\[-1pt]{\scriptsize\color{figMuted} servicios, reglas}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=4cm, minimum height=0.9cm, below=of neg2] (dat2) {%
+      \textbf{Persistencia}\\[-1pt]{\scriptsize\color{figMuted} ORM, SQL}};
+    \draw[figarr] (ui2) -- (neg2);
+    \draw[figarr] (neg2) -- (dat2);
+    \draw[figimpl, draw=figAdapt, line width=1.2pt]
+      (ui2.east) to[out=0,in=0,looseness=1.4]
+      node[midway, fill=white, inner sep=1.5pt, font=\scriptsize\bfseries, text=figAdapt] {fast-lane}
+      (dat2.east);
+    \node[font=\footnotesize\bfseries, text=figMuted, above=3mm of ui2] {Capas abiertas};
+    \node[font=\scriptsize, text=figBad, align=center, below=3mm of dat2] {La UI conoce la persistencia $\Rightarrow$ aislamiento perdido};
+  \end{tikzpicture}
+  \caption{Capas cerradas frente a capas abiertas. A la derecha, el atajo \emph{fast-lane} conecta presentación con persistencia sin pasar por negocio: se gana velocidad en lecturas simples a cambio del aislamiento de capas. Elaboración propia a partir de \parencite{richards2020fundamentals,richards2015patterns}.}
+  \label{fig:capas-abiertas}
+\end{figure}
+
+\subsubsection{El \emph{sinkhole anti-pattern} y la regla 80/20}
+El \emph{sinkhole anti-pattern} aparece cuando las peticiones atraviesan varias capas como simple \emph{pass-through}: la presentación recibe la petición, la pasa al negocio, el negocio la pasa a la persistencia, y ninguna capa ejecuta lógica de negocio relevante \parencite{richards2015patterns}. Abrir capas indiscriminadamente no resuelve este problema: acelera el tráfico que lo constituye y lo enmascara tras una mejora de rendimiento, de modo que el diseño queda igual de pobre pero más difícil de gobernar, porque ya no hay una frontera clara que diga dónde vive cada responsabilidad.
+
+Hay además una relación causal entre capas abiertas y \emph{sinkhole}. Al permitir que la presentación acceda directamente a la persistencia, se elimina la frontera que forzaba a la capa de negocio a justificar su existencia; sin esa frontera, nada impide que el negocio se degrade a mero \emph{pass-through}. Las capas abiertas no solo enmascaran el patrón, sino que incentivan el diseño que lo produce.
+
+La \textbf{regla 80/20} que propone \textcite{richards2015patterns} funciona como criterio de diagnóstico. Si un 20\,\% o menos de las peticiones son \emph{sinkholes}, la arquitectura es aceptable y la optimización es prescindible: no hay razón para romper el aislamiento de capas por una minoría de casos. Si un 80\,\% o más lo son, la propia regla dictamina que N-Capas no es el estilo adecuado para ese dominio; acelerar el tráfico no corrige el diagnóstico. En ninguno de los dos casos la propuesta del enunciado resuelve la ausencia de lógica de negocio: solo acelera el tráfico que recorre un tramo que sigue mal diseñado. La figura~\ref{fig:sinkhole} ilustra ambos casos.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=10mm]
+    \useasboundingbox (-1.0, -2.1) rectangle (12.0, 4.4);
+
+    % IZQUIERDA
+    \node[figbox, fill=figUiFill, minimum width=4cm, minimum height=0.9cm] (p1) at (2.0, 3.2) {%
+      \textbf{Presentación}\\[-1pt]{\scriptsize\color{figMuted} recibe la petición}};
+    \node[figbox, fill=figNegFill, dashed, minimum width=4cm, minimum height=0.9cm, below=of p1] (n1) {%
+      \textbf{Negocio}\\[-1pt]{\scriptsize\color{figMuted} \emph{pass-through}}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=4cm, minimum height=0.9cm, below=of n1] (d1) {%
+      \textbf{Persistencia}\\[-1pt]{\scriptsize\color{figMuted} ejecuta la consulta}};
+    \draw[figarrbad] (p1) -- (n1);
+    \draw[figarrbad] (n1) -- (d1);
+    \node[font=\footnotesize\bfseries, text=figBad, above=3mm of p1] {Sinkhole};
+    \node[font=\scriptsize, text=figBad, align=center, below=3mm of d1] {La capa intermedia no ejecuta lógica};
+
+    % DERECHA
+    \node[draw=figMuted, line width=0.5pt, rounded corners=2pt, fill=white,
+          minimum width=5.2cm, minimum height=4.2cm] (callout) at (9.2, 1.3) {};
+    \node[font=\footnotesize\bfseries, text=figMuted, above=3mm of callout] {Regla 80/20};
+    \fill[figOkFill] (7.1, 1.3) rectangle (7.9, 2.1);
+    \fill[figBadFill] (7.9, 1.3) rectangle (11.3, 2.1);
+    \draw[figMuted, line width=0.6pt] (7.1, 1.3) rectangle (11.3, 2.1);
+    \node[font=\scriptsize, text=figOk] at (7.5, 1.7) {20\,\%};
+    \node[font=\scriptsize, text=figBad] at (9.6, 1.7) {80\,\%};
+    \node[font=\scriptsize, text=figOk] at (7.5, 2.35) {aceptable};
+    \node[font=\scriptsize, text=figBad] at (9.6, 2.35) {crítico};
+    \node[font=\scriptsize, text=figMuted, align=center, text width=4.4cm] at (9.2, 0.6)
+      {Si $\geq 80\,\%$ son \emph{sinkholes}, N-Capas no es adecuado};
+  \end{tikzpicture}
+  \caption{\emph{Sinkhole anti-pattern} y regla 80/20. Cuando la mayoría de las peticiones solo atraviesan capas sin lógica, el problema no es de rendimiento sino de diseño. Elaboración propia a partir de \parencite{richards2015patterns}.}
+  \label{fig:sinkhole}
+\end{figure}
+
+\subsubsection{Por qué Hexagonal y Clean son inherentemente más adecuadas}
+En N-Capas la partición es \textbf{técnica}, no por dominio: un mismo dominio de negocio (inventario, pedidos, facturación) queda repartido por todas las capas, de modo que cualquier cambio en un dominio obliga a tocar presentación, negocio y persistencia a la vez. La figura~\ref{fig:particion} contrasta esa partición horizontal con la partición por dominio que proponen DDD y las arquitecturas derivadas. Esa diferencia de partición explica por qué la evaluación de atributos de calidad de N-Capas es baja en \textbf{escalabilidad}, \textbf{desplegabilidad} y \textbf{testabilidad} \parencite{richards2015patterns}, y por qué la partición por dominio es la que adoptan las arquitecturas orientadas al dominio \parencite{torre2010guia}.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[font=\footnotesize]
+    \useasboundingbox (-1.2, 0.3) rectangle (12.8, 4.2);
+
+    % IZQUIERDA: bandas horizontales
+    \node[font=\footnotesize\bfseries, text=figMuted] at (2.5, 4.0) {N-Capas};
+    \foreach \y/\lab in {2.7/UI, 1.9/Negocio, 1.1/Datos} {
+      \node[anchor=east, font=\scriptsize, text=figMuted] at (-0.12, \y+0.3) {\lab};
+      \draw[figInk, line width=0.5pt] (0, \y) rectangle (5, \y+0.6);
+    }
+    \fill[figNucleoFill] (0, 2.7) rectangle (1.67, 3.3);
+    \fill[figAdaptFill]  (1.67, 2.7) rectangle (3.33, 3.3);
+    \fill[figInfraFill]  (3.33, 2.7) rectangle (5, 3.3);
+    \fill[figNucleoFill] (0, 1.9) rectangle (1.67, 2.5);
+    \fill[figAdaptFill]  (1.67, 1.9) rectangle (3.33, 2.5);
+    \fill[figInfraFill]  (3.33, 1.9) rectangle (5, 2.5);
+    \fill[figNucleoFill] (0, 1.1) rectangle (1.67, 1.7);
+    \fill[figAdaptFill]  (1.67, 1.1) rectangle (3.33, 1.7);
+    \fill[figInfraFill]  (3.33, 1.1) rectangle (5, 1.7);
+    \node[font=\scriptsize] at (0.83, 3.0) {Inv.};
+    \node[font=\scriptsize] at (2.50, 3.0) {Ped.};
+    \node[font=\scriptsize] at (4.17, 3.0) {Fact.};
+    \node[font=\scriptsize] at (0.83, 2.2) {Inv.};
+    \node[font=\scriptsize] at (2.50, 2.2) {Ped.};
+    \node[font=\scriptsize] at (4.17, 2.2) {Fact.};
+    \node[font=\scriptsize] at (0.83, 1.4) {Inv.};
+    \node[font=\scriptsize] at (2.50, 1.4) {Ped.};
+    \node[font=\scriptsize] at (4.17, 1.4) {Fact.};
+    \node[font=\scriptsize, text=figMuted, align=center, anchor=north] at (2.5, 0.8)
+      {cada dominio aparece en las 3 capas};
+
+    % DERECHA: columnas verticales
+    \node[font=\footnotesize\bfseries, text=figMuted] at (10.15, 4.0) {Clean/Hexagonal};
+    \foreach \x/\lab in {7.4/Inv., 9.15/Ped., 10.9/Fact.} {
+      \draw[figNucleo, line width=0.7pt] (\x, 1.1) rectangle ++(1.55, 2.2);
+      \node[font=\scriptsize, anchor=south] at (\x+0.775, 3.32) {\lab};
+      \fill[figUiFill]    (\x+0.08, 2.55) rectangle ++(1.39, 0.5);
+      \fill[figNucleoFill](\x+0.08, 1.85) rectangle ++(1.39, 0.6);
+      \fill[figInfraFill] (\x+0.08, 1.18) rectangle ++(1.39, 0.5);
+      \node[font=\scriptsize] at (\x+0.775, 2.80) {UI};
+      \node[font=\scriptsize] at (\x+0.775, 2.15) {Neg.};
+      \node[font=\scriptsize] at (\x+0.775, 1.43) {Datos};
+    }
+    \node[font=\scriptsize, text=figMuted, align=center, anchor=north] at (10.15, 0.8)
+      {cada dominio = un todo autocontenido};
+  \end{tikzpicture}
+  \caption{Partición técnica frente a partición por dominio. En N-Capas cada dominio queda repartido por todas las capas (bandas); en Clean/Hexagonal cada dominio es autocontenido (columnas) y evoluciona sin arrastrar a los demás. Elaboración propia.}
+  \label{fig:particion}
+\end{figure}
+
+DDD ataca ese problema desde el modelado: los \textbf{Bounded Contexts} delimitan dominios con su propio Lenguaje Ubicuo y su propio modelo, de modo que cada contexto evoluciona sin arrastrar a los demás. La guía de arquitectura N-Capas orientada al dominio aplica principios de DDD para separar el dominio de la infraestructura \parencite{torre2010guia}. Clean, Hexagonal y Onion proporcionan la estructura técnica para materializar esos contextos: cada Bounded Context se implementa como un núcleo aislado, con su dominio en el centro y sus adaptadores en el borde, y las dependencias apuntando \textbf{solo hacia adentro} \parencite{martin2017clean,cockburn2005hexagonal,palermo2008onion}. DDD dice \emph{qué} aislar; Clean, Hexagonal y Onion dicen \emph{cómo} hacerlo sin que la infraestructura contamine el núcleo.
+
+Esto no es una optimización cosmética: \textbf{elimina estructuralmente} el acoplamiento que N-Capas intenta mitigar con capas abiertas. La figura~\ref{fig:dependencias} contrasta ambos flujos: en N-Capas la cadena de dependencias es UI $\rightarrow$ Dominio $\rightarrow$ Persistencia; en Clean/Hexagonal la UI y la persistencia dependen ambas del dominio, que no depende de ninguna. El dominio se prueba y evoluciona sin conocer la base de datos, la UI ni el framework, y los detalles tecnológicos son sustituibles sin reescribir reglas de negocio \parencite{martin2017clean,cockburn2005hexagonal,palermo2008onion}. Esa guía insiste en la misma separación: el dominio debe ser independiente de la tecnología de persistencia y de los mecanismos de entrega \parencite{torre2010guia}.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}
+    \useasboundingbox (-1.0, -2.5) rectangle (11.5, 4.5);
+
+    % IZQUIERDA: N-Capas (centros en y = 3.0, 1.2, -0.6)
+    \node[figbox, fill=figUiFill, minimum width=3.6cm, minimum height=0.8cm] (ui) at (1.8, 3.0) {\textbf{UI}};
+    \node[figbox, fill=figNegFill, minimum width=3.6cm, minimum height=0.8cm, below=10mm of ui] (neg) {\textbf{Dominio}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=3.6cm, minimum height=0.8cm, below=10mm of neg] (dat) {\textbf{Persistencia}};
+    \draw[figarrbad] (ui) -- (neg);
+    \draw[figarrbad] (neg) -- (dat);
+    \node[font=\footnotesize\bfseries, text=figBad, above=3mm of ui] {N-Capas};
+    \node[font=\scriptsize, text=figBad, align=center, below=3mm of dat] {el dominio depende\\de la persistencia};
+
+    % DERECHA: Clean/Hexagonal (mismos centros: 3.0, 1.2, -0.6)
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+          minimum width=3.6cm, minimum height=0.8cm] (dom) at (9.4, 1.2) {\textbf{Dominio}};
+    \node[figbox, fill=figUiFill, minimum width=3.6cm, minimum height=0.8cm, above=10mm of dom] (ui2) {\textbf{UI}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=3.6cm, minimum height=0.8cm, below=10mm of dom] (dat2) {\textbf{Persistencia}};
+    \draw[figarrook] (ui2) -- (dom);
+    \draw[figarrook] (dat2) -- (dom);
+    \node[font=\footnotesize\bfseries, text=figOk, above=3mm of ui2] {Clean/Hexagonal};
+    \node[font=\scriptsize, text=figOk, align=center, below=3mm of dat2] {las capas externas dependen\\del centro};
+  \end{tikzpicture}
+  \caption{Dirección de las dependencias. A la izquierda, el dominio conoce la persistencia (cadena hacia abajo). A la derecha, la UI y la persistencia convergen sobre el dominio (las capas externas dependen del centro). La inversión no añade capas: cambia quién conoce a quién. Elaboración propia a partir de \parencite{martin2017clean,cockburn2005hexagonal,palermo2008onion}.}
+  \label{fig:dependencias}
+\end{figure}
+
+Por eso, para requisitos de \textbf{alta escalabilidad y agilidad}, estas arquitecturas son inherentemente más adecuadas: no dependen de abrir o cerrar capas para sortear un acoplamiento que su propio diseño ya evita. La separación en Bounded Contexts permite que cada contexto evolucione y se pruebe de forma independiente; si además se despliega como servicio separado, también escala de forma independiente. La agilidad mejora porque un cambio en un contexto no obliga a tocar los demás; la testabilidad, porque el núcleo se prueba sin infraestructura \parencite{richards2020fundamentals,richards2015patterns}.
+
+\subsubsection{Síntesis}
+La propuesta del enunciado es parcialmente válida: las capas abiertas y el \emph{fast-lane reader} mejoran el rendimiento en lecturas simples, pero lo hacen a costa del aislamiento de capas, que es una de las ventajas de N-Capas. Además, abrir capas \textbf{enmascara} el \emph{sinkhole anti-pattern} en lugar de corregirlo, e incluso lo incentiva al eliminar la frontera que obligaba a la capa de negocio a justificar su existencia. La regla 80/20 muestra que, cuando la mayoría de las peticiones son \emph{pass-through}, el problema no es de rendimiento sino de diseño: N-Capas no es el estilo adecuado. Hexagonal y Clean no optimizan N-Capas: la sustituyen por una partición por dominio —los Bounded Contexts de DDD— con dependencias hacia adentro, que elimina estructuralmente el acoplamiento en lugar de sortearlo con atajos. Para alta escalabilidad y agilidad, esa diferencia de diseño importa más que cualquier optimización local de capas.
