@@ -29,12 +29,117 @@ Con base en los principios de la Inversión de Dependencias (Martin) y la Regla 
 \end{itemize}
 
 \subsection{Respuesta}
+
 \subsubsection{Violación de principios}
-% TODO: dirección correcta de dependencias en Hexagonal, Clean y Onion.
+La implementación actual viola el \textbf{Principio de Inversión de Dependencias} (DIP) y, con él, la \textbf{Regla de Dependencia} que articula las arquitecturas Hexagonal, Limpia y Onion. \texttt{OrderProcessor}, que contiene la lógica de negocio de alto nivel, instancia y llama directamente a \texttt{AddressValidatorService}, una clase de infraestructura que a su vez depende de una biblioteca HTTP concreta.
+
+El DIP establece que los módulos de alto nivel no deben depender de los módulos de bajo nivel; ambos deben depender de abstracciones, y las abstracciones no deben depender de los detalles. La Regla de Dependencia de Clean Architecture lo formula de manera operativa \parencite{martin2017clean}:
+
+\begin{quote}
+``Source code dependencies must point only inward, toward higher-level policies.'' \parencite{martin2017clean}
+\end{quote}
+
+En la implementación actual, las dependencias apuntan \textbf{hacia afuera}: el núcleo de negocio conoce y depende de un detalle de infraestructura (HTTP, un proveedor concreto). En términos de la Arquitectura Hexagonal, el hexágono no debería conocer sus adaptadores externos. \textcite{cockburn2005hexagonal} define el propósito de este estilo precisamente en términos de aislamiento:
+
+\begin{quote}
+``Allow an application to equally be driven by users, programs, automated test or batch scripts, and to be developed and tested in isolation from its eventual run-time devices and databases.'' \parencite{cockburn2005hexagonal}
+\end{quote}
+
+La Arquitectura Onion comparte la misma regla estructural \parencite{palermo2008onion}:
+
+\begin{quote}
+``The fundamental rule is that all code can depend on layers more central, but code cannot depend on layers further out from the core. In other words, all coupling is toward the center.'' \parencite{palermo2008onion}
+\end{quote}
+
+La dependencia directa actual impide ese aislamiento: acopla la lógica de negocio a un detalle tecnológico concreto, de modo que cualquier cambio en el mecanismo de validación (o en la biblioteca HTTP subyacente) impacta directamente en el núcleo. La figura~\ref{fig:antes-despues} contrasta ambos escenarios.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=7mm and 9mm]
+    % Antes
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+          minimum width=3.6cm] (op1) {\texttt{OrderProcessor}\\[1pt]
+      {\scriptsize lógica de pedidos}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=3.6cm, below=of op1] (av1) {\texttt{AddressValidatorService}\\[1pt]
+      {\scriptsize cliente concreto}};
+    \node[figbox, fill=figBadFill, draw=figBad, minimum width=3.6cm, below=of av1] (http1) {Biblioteca HTTP\\[1pt]
+      {\scriptsize proveedor externo}};
+    \draw[figarrbad] (op1) -- (av1);
+    \draw[figarrbad] (av1) -- (http1);
+    \node[font=\footnotesize\bfseries, text=figBad, anchor=south]
+      at ([yshift=1.6mm]op1.north) {Antes};
+
+    % Después
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+          minimum width=4.4cm, right=22mm of op1] (op2) {\texttt{OrderProcessor}\\[1pt]
+      {\scriptsize lógica de pedidos}};
+    \node[figbox, fill=white, draw=figNucleo, line width=0.9pt,
+          minimum width=4.4cm, below=of op2] (port) {\texttt{AddressValidator}\\[1pt]
+      {\scriptsize interfaz (puerto) en el núcleo}};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=4.4cm, below=of port] (adapt) {\texttt{AddressValidatorHttpAdapter}\\[1pt]
+      {\scriptsize implementación del puerto}};
+    \node[figbox, fill=figInfraFill, draw=figInfra, minimum width=4.4cm, below=of adapt] (http2) {Biblioteca HTTP\\[1pt]
+      {\scriptsize proveedor externo}};
+    \draw[figarr] (op2) -- (port);
+    \draw[figimpl] (adapt.north) -- (port.south);
+    \draw[figarr] (adapt) -- (http2);
+    \node[font=\footnotesize\bfseries, text=figOk, anchor=south]
+      at ([yshift=1.6mm]op2.north) {Después};
+    \node[font=\scriptsize, text=figAdapt, anchor=west]
+      at ($(port.south)!0.5!(adapt.north)+(0.22,0)$) {implementa};
+    \node[font=\scriptsize, text=figMuted, anchor=west]
+      at ($(op2.south)!0.5!(port.north)+(0.22,0)$) {depende de};
+  \end{tikzpicture}
+  \caption{Antes y después de invertir la dependencia. A la izquierda, el núcleo conoce el detalle HTTP. A la derecha, el núcleo define el puerto y el adaptador de infraestructura lo implementa. Elaboración propia.}
+  \label{fig:antes-despues}
+\end{figure}
 
 \subsubsection{Rediseño}
-% TODO: interfaz en el núcleo; implementación en infraestructura.
+El rediseño se articula en dos componentes claramente separados:
+
+\begin{enumerate}
+    \item \textbf{Componente en el núcleo (puerto):} se define una interfaz \texttt{AddressValidator} en la capa de aplicación/dominio. Esta interfaz declara el método necesario (por ejemplo, \texttt{validate(address): ValidationResult}) y expresa \emph{qué} necesita la lógica de negocio, sin especificar \emph{cómo} se obtiene. \texttt{OrderProcessor} depende únicamente de esta abstracción.
+    \item \textbf{Componente en infraestructura (adaptador):} se crea una clase denominada \texttt{AddressValidatorHttpAdapter} que implementa \texttt{AddressValidator} utilizando la biblioteca HTTP concreta para comunicarse con el servicio externo. Este adaptador reside fuera del hexágono, en la capa de infraestructura.
+\end{enumerate}
+
+La justificación de este diseño es el principio de que \textbf{los detalles deben depender de las abstracciones}, no al revés. La abstracción (\texttt{AddressValidator}) reside en el núcleo y no conoce HTTP ni ningún proveedor concreto; mientras que la implementación (\texttt{AddressValidatorHttpAdapter}) depende de esa abstracción. Esto alinea el diseño con la regla de la Arquitectura Onion: la base de datos y los servicios externos quedan fuera del núcleo, y el acoplamiento apunta siempre hacia el centro \parencite{palermo2008onion}.
+
+El mecanismo concreto para que \texttt{OrderProcessor} reciba la implementación sin instanciarla es la \textbf{inyección de dependencias}. Existen tres variantes habituales (figura~\ref{fig:inyeccion}):
+
+\begin{itemize}
+  \item \textbf{Por constructor:} \texttt{OrderProcessor(AddressValidator validator)}. Es la preferida en arquitecturas limpias porque hace explícitas las dependencias y permite que el objeto sea inmutable respecto a ellas.
+  \item \textbf{Por método (o setter):} \texttt{orderProcessor.setValidator(validator)}. Útil cuando la dependencia es opcional o cambia en tiempo de ejecución, a costa de perder la garantía de que el objeto siempre está completamente inicializado.
+  \item \textbf{Por interfaz o fábrica:} el núcleo declara una fábrica (\texttt{AddressValidatorFactory}) y la infraestructura la implementa. Se usa cuando la creación del adaptador requiere configuración que el núcleo no debe conocer.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[node distance=6mm and 10mm]
+    \node[figbox, fill=figUiFill, minimum width=5.2cm] (comp) {Composición (arranque)\\[1pt]
+      {\scriptsize elige el adaptador por configuración}};
+    \node[figbox, fill=figNucleoFill, draw=figNucleo, line width=0.9pt,
+          minimum width=5.2cm, below=of comp] (op) {\texttt{OrderProcessor}\\[1pt]
+      {\scriptsize recibe \texttt{AddressValidator}}};
+    \node[figbox, fill=figAdaptFill, draw=figAdapt, minimum width=5.2cm, below=of op] (ad) {\texttt{AddressValidatorHttpAdapter}\\[1pt]
+      {\scriptsize implementa el puerto}};
+    \draw[figarr] (comp) -- node[right, font=\scriptsize, text=figMuted] {inyecta} (op);
+    \draw[figimpl] (ad.north) -- (op.south);
+    \node[font=\scriptsize, text=figAdapt, anchor=west]
+      at ($(op.south)!0.5!(ad.north)+(0.22,0)$) {implementa};
+    \node[font=\scriptsize, text=figMuted, anchor=west, align=left]
+      at ([xshift=3.4cm]op.east) {El núcleo no instancia:\\[1pt]
+        recibe la abstracción ya construida.};
+  \end{tikzpicture}
+  \caption{Inyección por constructor. La composición (infraestructura) construye el adaptador y lo pasa al núcleo. \texttt{OrderProcessor} nunca escribe \texttt{new AddressValidatorHttpAdapter()}. Elaboración propia.}
+  \label{fig:inyeccion}
+\end{figure}
 
 \subsubsection{Testabilidad y evolución}
-% TODO: pruebas sin HTTP real; cambio de proveedor.
-\textit{[Fundamentar con \parencite{martin2017clean,cockburn2005hexagonal,palermo2008onion}.]}
+Con el nuevo diseño, \texttt{OrderProcessor} puede probarse de forma aislada inyectando una implementación falsa (\emph{fake}) o un \emph{mock} de \texttt{AddressValidator}. Las pruebas unitarias del núcleo no realizan llamadas HTTP reales, no dependen de la red ni de la biblioteca HTTP subyacente: son rápidas, deterministas y verifican exclusivamente la lógica de negocio. Esto es posible porque, como señala \textcite{cockburn2005hexagonal}, la arquitectura hexagonal permite que la aplicación sea desarrollada y probada en aislamiento de sus eventuales dispositivos y bases de datos en tiempo de ejecución.
+
+En cuanto a la mantenibilidad, cambiar el proveedor de validación de direcciones (por ejemplo, de un servicio HTTP a una base de datos local o a otro proveedor externo) solo requiere crear un nuevo adaptador que implemente \texttt{AddressValidator}. El núcleo ---\texttt{OrderProcessor} y la interfaz \texttt{AddressValidator}--- no se modifica. Esto materializa el objetivo del DIP: las políticas de alto nivel no dependen de los detalles; son los detalles los que dependen de las abstracciones \parencite{martin2017clean}. Como consecuencia, el sistema gana en mantenibilidad y capacidad de evolución, ya que los cambios tecnológicos quedan confinados a la capa de infraestructura, siguiendo la regla de dependencia hacia el centro propia de las arquitecturas orientadas al dominio \parencite{palermo2008onion}.
+
+Este efecto sobre los atributos de calidad es consistente con lo documentado en la guía de arquitectura N-Capas orientada al dominio, donde la separación estricta entre dominio e infraestructura se presenta como condición para que la lógica de negocio sea independiente de la tecnología de persistencia y de los mecanismos de entrega \parencite{torre2010guia}. Asimismo, desde la perspectiva de los atributos de calidad, la testabilidad y la mantenibilidad son precisamente los atributos que se deterioran cuando el acoplamiento arrastra la infraestructura al núcleo \parencite{richards2020fundamentals}.
+
+\subsubsection{Síntesis}
+El error no es haber elegido una dependencia directa por simplicidad, sino permitir que las dependencias del núcleo apunten hacia detalles volátiles. La Regla de Dependencia y los puertos/adaptadores no añaden capas por capricho: \textbf{invierten el flujo de control} para que la lógica de negocio mande sobre la tecnología. El resultado es un sistema algo más costoso de diseñar al principio, pero con pruebas unitarias rápidas y con la libertad de sustituir el proveedor de validación (o la biblioteca HTTP subyacente) sin erosionar el núcleo.
