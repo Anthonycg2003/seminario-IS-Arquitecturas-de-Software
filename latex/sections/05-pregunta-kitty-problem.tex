@@ -321,17 +321,6 @@ de los gatitos, los adaptadores cumplen tres funciones:
     El cambio queda en el borde, que es donde debe estar.
 \end{enumerate}
 
-\subsubsection{Aplicación a nuestro proyecto}
-
-El documento de arquitectura del sistema de horarios ya prevé el patrón \emph{Strategy} para el
-generador, de modo que una estrategia nueva se añada como un módulo sin tocar las
-rutas\footnote{\raggedright Véase \texttt{docs/architecture.md}, sección 5.4, en el repositorio del
-proyecto: \url{https://github.com/Anthonycg2003/sistema-horarios-docentes}.}. Es el mismo mecanismo
-a pequeña escala. La lección del \emph{Kitty Problem} es llevarlo a todo el sistema: si mañana se
-pidiera un nuevo tipo de horario, por ejemplo de exámenes, debería llegar como un componente que
-implemente los puntos de extensión de la generación y la validación, y no como cambios repartidos
-por rutas, servicios y repositorios.
-
 \subsubsection{Síntesis}
 
 \begin{itemize}
