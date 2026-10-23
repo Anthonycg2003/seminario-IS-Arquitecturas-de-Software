@@ -33,23 +33,11 @@ Con base en los principios de la Inversión de Dependencias (Martin) y la Regla 
 \subsubsection{Violación de principios}
 La implementación actual viola el \textbf{Principio de Inversión de Dependencias} (DIP) y, con él, la \textbf{Regla de Dependencia} que articula las arquitecturas Hexagonal, Limpia y Onion. \texttt{OrderProcessor}, que contiene la lógica de negocio de alto nivel, instancia y llama directamente a \texttt{AddressValidatorService}, una clase de infraestructura que a su vez depende de una biblioteca HTTP concreta.
 
-El DIP establece que los módulos de alto nivel no deben depender de los módulos de bajo nivel; ambos deben depender de abstracciones, y las abstracciones no deben depender de los detalles. La Regla de Dependencia de Clean Architecture lo formula de manera operativa \parencite{martin2017clean}:
+El DIP establece que los módulos de alto nivel no deben depender de los módulos de bajo nivel; ambos deben depender de abstracciones, y las abstracciones no deben depender de los detalles. Martin formula la Regla de Dependencia de Clean Architecture en esa misma dirección: ningún módulo de código debería importar a otro más cercano a los detalles, porque las flechas de dependencia apuntan siempre hacia las políticas y nunca hacia la infraestructura \parencite{martin2017clean}.
 
-\begin{quote}
-``Source code dependencies must point only inward, toward higher-level policies.'' \parencite{martin2017clean}
-\end{quote}
+En la implementación actual, las dependencias apuntan \textbf{hacia afuera}: el núcleo de negocio conoce y depende de un detalle de infraestructura (HTTP, un proveedor concreto). En términos de la Arquitectura Hexagonal, el hexágono no debería conocer sus adaptadores externos. \textcite{cockburn2005hexagonal} concibe este estilo para que el núcleo de una aplicación ignore quién o qué la invoca ---una persona, otro programa, una prueba automatizada o un script--- y para que pueda desarrollarse y probarse al margen del dispositivo o la base de datos que usará en producción \parencite{cockburn2005hexagonal}.
 
-En la implementación actual, las dependencias apuntan \textbf{hacia afuera}: el núcleo de negocio conoce y depende de un detalle de infraestructura (HTTP, un proveedor concreto). En términos de la Arquitectura Hexagonal, el hexágono no debería conocer sus adaptadores externos. \textcite{cockburn2005hexagonal} define el propósito de este estilo precisamente en términos de aislamiento:
-
-\begin{quote}
-``Allow an application to equally be driven by users, programs, automated test or batch scripts, and to be developed and tested in isolation from its eventual run-time devices and databases.'' \parencite{cockburn2005hexagonal}
-\end{quote}
-
-La Arquitectura Onion comparte la misma regla estructural \parencite{palermo2008onion}:
-
-\begin{quote}
-``The fundamental rule is that all code can depend on layers more central, but code cannot depend on layers further out from the core. In other words, all coupling is toward the center.'' \parencite{palermo2008onion}
-\end{quote}
+La Arquitectura Onion comparte la misma regla estructural: el acoplamiento debe dirigirse siempre hacia el interior del modelo, nunca hacia el exterior. Lo que está más cerca del borde puede depender del centro, pero no al revés \parencite{palermo2008onion}.
 
 La dependencia directa actual impide ese aislamiento: acopla la lógica de negocio a un detalle tecnológico concreto, de modo que cualquier cambio en el mecanismo de validación (o en la biblioteca HTTP subyacente) impacta directamente en el núcleo. La figura~\ref{fig:antes-despues} contrasta ambos escenarios.
 
